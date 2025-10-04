@@ -1,4 +1,6 @@
+<<<<<<< HEAD
 # Environment Variables and Configuration
+myenv/*
 .env
 .env.local
 .env.development
@@ -270,3 +272,7 @@ Icon?
 ehthumbs.db
 Thumbs.db
 agents/policy_bot/.env
+=======
+myenv/*
+.env
+>>>>>>> cfd3e89fe4c4bcf694ad5c97366409d59c3fada9
