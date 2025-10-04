@@ -1,0 +1,46 @@
+{
+    "name": "Devansh Varshney",
+    "email": "Devansh.Varshney@students.iiit.ac.in",
+    "skills": [
+        "Python",
+        "C/C++",
+        "SQL (MySQL)",
+        "HTML/CSS",
+        "MATLAB",
+        "Verilog HDL",
+        "Strands Agents SDK",
+        "LangChain",
+        "FastAPI",
+        "React",
+        "Node.js",
+        "Flask",
+        "Git",
+        "Postman",
+        "AWS CLI",
+        "VS Code",
+        "Visual Studio",
+        "PyCharm",
+        "Docker",
+        "pandas",
+        "NumPy",
+        "Matplotlib",
+        "Amazon Web Services (AWS)",
+        "LTSPICE",
+        "NGSPICE",
+        "MAGIC",
+        "Effective communicator",
+        "Leader",
+        "Adaptable",
+        "Critical thinking",
+        "Problem-solving",
+        "Continuous learner"
+    ],
+    "experience_years": 0,
+    "seniority": "Junior",
+    "education": [
+        {
+            "degree": "Bachelor of Technology in Electronics and Communication Engineering",
+            "institution": "International Institute of Information Technology, Hyderabad"
+        }
+    ]
+}

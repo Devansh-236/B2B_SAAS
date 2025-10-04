@@ -1,162 +1,158 @@
-# /hr_automation_project/agents/talent_scout/scout_agent.py
-
-import google.generativeai as genai
-from talent_scout.prompts import (
-    create_resume_parsing_prompt,
-    create_scoring_prompt,
-    create_interview_question_prompt
-)
-from core.utils.file_parser import read_pdf_file # Assumes your secure parser is here
+from prompts import create_structured_scoring_prompt
 import json
 import os
-
+from google import genai
+from dotenv import load_dotenv
+load_dotenv()
 class TalentScoutAgent:
     """
-    The TalentScoutAgent securely parses resumes, scores them against a job brief,
-    and generates a shortlist of top candidates by directly interacting with the Gemini API.
+    Ranks candidates using a weighted, deterministic scoring formula. It uses
+    the Gemini Client to perform structured analysis, then applies a weighted
+    calculation to generate a final, explainable score.
     """
-    def __init__(self, api_key: str, model_name: str = 'gemini-pro'):
-        """
-        Initializes the TalentScoutAgent and configures the Gemini API.
-
-        Args:
-            api_key (str): The Google API key for the Gemini service.
-            model_name (str): The specific model to use (e.g., 'gemini-pro').
-        """
+    def __init__(self, api_key: str, model_name: str = 'gemini-2.5-flash'):
         if not api_key:
-            raise ValueError("Gemini API key is required for TalentScoutAgent.")
-        
-        # --- Direct Gemini API Configuration ---
-        genai.configure(api_key=api_key)
-        try:
-            self.model = genai.GenerativeModel(model_name)
-            print(f"Successfully initialized Gemini model '{model_name}' for Talent Scout.")
-        except Exception as e:
-            print(f"Error initializing Gemini model: {e}")
-            raise
-        # -----------------------------------------
+            raise ValueError("Gemini API key is required.")
+        self.client = genai.Client(api_key=api_key)
+        self.model_name = model_name
+        print(f"Gemini Client initialized for model '{self.model_name}'.")
 
-    def _call_gemini_api(self, prompt: str) -> str:
-        """
-        A private method to send a prompt to the Gemini API and get the text response.
-        """
+    def _get_structured_analysis(self, jd_text: str, candidate_data: dict) -> dict:
+        """Calls the LLM to get the structured analysis of a candidate."""
         try:
-            response = self.model.generate_content(prompt)
-            return response.text
-        except Exception as e:
-            print(f"An error occurred during the Gemini API call: {e}")
-            return ""
-
-    def _parse_llm_json_response(self, response_text: str, context: str) -> dict or None:
-        """A helper function to safely parse JSON from the LLM's text response."""
-        if not response_text:
-            print(f"LLM returned an empty response for {context}.")
-            return None
-        
-        # Clean the response by removing markdown code fences
-        cleaned_text = response_text.strip().replace('```json', '').replace('```', '').strip()
-        
-        try:
+            prompt = create_structured_scoring_prompt(jd_text, candidate_data)
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt
+            )
+            cleaned_text = response.text.strip().replace('```json', '').replace('```', '').strip()
             return json.loads(cleaned_text)
-        except json.JSONDecodeError:
-            print(f"Error: Could not decode JSON from LLM response for {context}.")
-            print(f"Raw response was: {cleaned_text}")
+        except Exception as e:
+            name = candidate_data.get('name', 'N/A')
+            print(f"  - LLM analysis failed for candidate {name}: {e}")
             return None
+    def _calculate_deterministic_score(self, analysis: dict, candidate_data: dict) -> dict:
+        """
+        Applies a weighted formula to the structured analysis from the LLM.
+        This ensures consistent and transparent scoring.
+        """
+        # --- SCORING RUBRIC (Total 100 points) ---
+        # 1. Must-Have Skills: 40 points (Most important)
+        # 2. Experience Relevance: 25 points (Quality of experience)
+        # 3. Optional Skills: 15 points (Differentiator)
+        # 4. Years of Experience: 10 points (Binary check)
+        # 5. Education Relevance: 10 points (Tie-breaker)
+        # ----------------------------------------------------
+        
+        scores = {}
+        req = analysis.get("requirements_analysis", {})
+        eval = analysis.get("candidate_evaluation", {})
 
-    def parse_resume_to_json(self, resume_text: str) -> dict:
-        """Parses the raw text of a resume into a canonicalized JSON format."""
-        prompt = create_resume_parsing_prompt(resume_text)
-        response_text = self._call_gemini_api(prompt)
-        return self._parse_llm_json_response(response_text, "resume parsing")
+        # 1. Must-Have Skills Score (Weight: 40)
+        total_must = len(req.get("must_have_skills_from_jd", []))
+        found_must = len(eval.get("found_must_have_skills", []))
+        scores['must_have_skills'] = ((found_must / total_must) * 40) if total_must > 0 else 40
 
-    def compute_match_score(self, job_brief: dict, resume_json: dict) -> dict:
-        """Computes a match score for a resume against a job brief."""
-        prompt = create_scoring_prompt(job_brief, resume_json)
-        response_text = self._call_gemini_api(prompt)
-        return self._parse_llm_json_response(response_text, "scoring")
+        # 2. Experience Relevance Score (Weight: 25)
+        # LLM provides a score from 0-10, we scale it to 25 points.
+        relevance_score = eval.get("experience_relevance_score", 0)
+        scores['experience_relevance'] = (relevance_score / 10) * 25
 
-    def generate_interview_questions(self, job_brief: dict, resume_json: dict) -> list:
-        """Generates tailored interview questions for a candidate."""
-        prompt = create_interview_question_prompt(job_brief, resume_json)
-        response_text = self._call_gemini_api(prompt)
-        response_data = self._parse_llm_json_response(response_text, "question generation")
-        return response_data.get("questions", []) if response_data else []
+        # 3. Optional Skills Score (Weight: 15)
+        total_opt = len(req.get("optional_skills_from_jd", []))
+        found_opt = len(eval.get("found_optional_skills", []))
+        scores['optional_skills'] = ((found_opt / total_opt) * 15) if total_opt > 0 else 15
 
-    def screen_resumes(self, job_brief: dict, resume_files: list, max_shortlist_size: int) -> list:
-        """Orchestrates the entire resume screening process."""
-        candidates = []
-        for resume_path in resume_files:
-            print(f"Processing resume: {os.path.basename(resume_path)}")
-            resume_text = read_pdf_file(resume_path) # Using the secure OCR parser
-            if not resume_text:
-                print(f"  - Could not extract text from {os.path.basename(resume_path)}. Skipping.")
-                continue
+        # 4. Years of Experience Score (Weight: 10)
+        req_years = req.get("required_years_experience", 0)
+        cand_years = candidate_data.get("experience_years", 0)
+        scores['years_of_experience'] = 10 if cand_years >= req_years else 0
 
-            parsed_resume = self.parse_resume_to_json(resume_text)
-            if not parsed_resume:
-                print(f"  - Failed to parse resume from {os.path.basename(resume_path)}. Skipping.")
-                continue
+        # 5. Education Relevance Score (Weight: 10)
+        # LLM provides a score from 0-10, we scale it to 10 points.
+        edu_score = eval.get("education_relevance_score", 0)
+        scores['education_relevance'] = (edu_score / 10) * 10
+        
+        # Calculate Total Score and round all values for cleanliness
+        total_score = sum(scores.values())
+        scores_rounded = {k: round(v, 2) for k, v in scores.items()}
+        scores_rounded['total_score'] = round(total_score, 2)
+        
+        return scores_rounded
 
-            scores = self.compute_match_score(job_brief, parsed_resume)
-            if not scores:
-                print(f"  - Failed to score resume for {os.path.basename(resume_path)}. Skipping.")
-                continue
+    def rank_candidates_for_job(self, job_description_path: str, candidate_json_paths: list) -> list:
+        """
+        Reads a job description, evaluates all candidate JSONs against it,
+        and returns a ranked list of candidates with detailed scores.
+        """
+        print(f"\n--- Ranking Candidates for Job: {os.path.basename(job_description_path)} ---")
+        try:
+            with open(job_description_path, 'r') as f:
+                jd_text = f.read()
+        except IOError as e:
+            print(f"Error: Could not read job description file: {e}")
+            return []
 
-            candidate_profile = {
-                "resume_file": os.path.basename(resume_path),
-                "parsed_data": parsed_resume,
-                "match_scores": scores
-            }
-            candidates.append(candidate_profile)
+        ranked_candidates = []
+        for json_path in candidate_json_paths:
+            try:
+                with open(json_path, 'r') as f:
+                    candidate_data = json.load(f)
+                
+                print(f"Evaluating candidate: {candidate_data.get('name', 'Unknown')}")
+                
+                analysis = self._get_structured_analysis(jd_text, candidate_data)
+                if not analysis:
+                    continue
 
-        # Sort candidates by absolute score
-        sorted_candidates = sorted(
-            candidates, 
-            key=lambda x: x.get('match_scores', {}).get('absolute_score', 0), 
-            reverse=True
-        )
+                scores = self._calculate_deterministic_score(analysis, candidate_data)
 
-        # Generate interview questions for the top N candidates
-        shortlist = sorted_candidates[:max_shortlist_size]
-        for candidate in shortlist:
-            questions = self.generate_interview_questions(job_brief, candidate['parsed_data'])
-            candidate['recommended_interview_questions'] = questions
+                ranked_candidates.append({
+                    "name": candidate_data.get("name"),
+                    "final_score": scores.get('total_score'),
+                    "score_breakdown": scores,
+                    "rationale": analysis.get("summary_rationale", "N/A"),
+                })
 
-        return shortlist
+            except (IOError, json.JSONDecodeError) as e:
+                print(f"  - Could not process candidate file {os.path.basename(json_path)}: {e}")
+        
+        # Sort candidates by final score in descending order
+        return sorted(ranked_candidates, key=lambda x: x['final_score'], reverse=True)
 
 # ==============================================================================
-# Example Usage Block (can be moved to main.py)
+# Example Usage Block
 # ==============================================================================
 if __name__ == '__main__':
-    # It's best practice to get the API key from an environment variable
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY_HERE")
+    
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-    if GEMINI_API_KEY == "YOUR_GEMINI_API_KEY_HERE":
-        print("CRITICAL: Please set your GEMINI_API_KEY in an environment variable or directly in the code.")
+    if not GEMINI_API_KEY:
+        print("CRITICAL: Please set the GEMINI_API_KEY environment variable.")
     else:
-        # 1. Initialize the agent directly
         scout = TalentScoutAgent(api_key=GEMINI_API_KEY)
 
-        # 2. Define the job brief
-        job_brief_example = {
-            "title": "Senior Python Developer",
-            "required_skills": {
-                "must_have": ["Python", "Django", "REST APIs", "PostgreSQL", "Unit Testing"],
-                "optional": ["React", "Docker", "AWS", "CI/CD"]
-            },
-            "experience_years": 5
-        }
+        JOB_POSTINGS_DIR = "job_postings"
+        CANDIDATE_JSON_DIR = "output_files"
+        target_job_posting = "llm_engineer_jd.txt" 
 
-        # 3. List of resumes (ensure these files exist)
-        resume_files_list = ["data/input_resumes/sample_resume.pdf"] 
+        job_path = os.path.join(JOB_POSTINGS_DIR, target_job_posting)
+        
+        candidate_files = [
+            os.path.join(CANDIDATE_JSON_DIR, f)
+            for f in os.listdir(CANDIDATE_JSON_DIR)
+            if f.endswith(".json")
+        ]
 
-        # 4. Run the screening process
-        shortlisted_candidates = scout.screen_resumes(
-            job_brief=job_brief_example,
-            resume_files=resume_files_list,
-            max_shortlist_size=1
-        )
+        if not os.path.exists(job_path):
+            print(f"Error: Job posting not found at '{job_path}'.")
+        elif not candidate_files:
+            print(f"Error: No candidate JSON files found in '{CANDIDATE_JSON_DIR}'.")
+        else:
+            final_rankings = scout.rank_candidates_for_job(
+                job_description_path=job_path,
+                candidate_json_paths=candidate_files
+            )
 
-        # 5. Print the final, structured output
-        print("\n--- SCREENING COMPLETE. FINAL SHORTLIST: ---\n")
-        print(json.dumps(shortlisted_candidates, indent=2))
+            print("\n\n--- FINAL RANKING RESULTS ---")
+            print(json.dumps(final_rankings, indent=2))
