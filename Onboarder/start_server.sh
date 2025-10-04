@@ -59,9 +59,9 @@ if [ $? -ne 0 ]; then
 fi
 
 # Start the server
-echo "🌐 Starting FastAPI server on http://localhost:8000"
-echo "📖 API documentation available at http://localhost:8000/docs"
-echo "🔧 Admin interface available at http://localhost:8000/redoc"
+echo "🌐 Starting FastAPI server on http://localhost:8050"
+echo "📖 API documentation available at http://localhost:8050/docs"
+echo "🔧 Admin interface available at http://localhost:8050/redoc"
 echo ""
 echo "Press Ctrl+C to stop the server"
 echo ""

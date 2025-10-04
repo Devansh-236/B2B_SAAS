@@ -97,21 +97,21 @@ employee_data = {
     # employee_id is optional - will be auto-generated
 }
 
-response = requests.post("http://localhost:8000/onboarding", json=employee_data)
+response = requests.post("http://localhost:8050/onboarding", json=employee_data)
 result = response.json()
 employee_id = result["data"]["employee_id"]  # Auto-generated ID
 ```
 
 ### Check Status
 ```python
-response = requests.get(f"http://localhost:8000/onboarding/{employee_id}/status")
+response = requests.get(f"http://localhost:8050/onboarding/{employee_id}/status")
 status = response.json()
 print(f"Status: {status['status']}, Phase: {status['current_phase']}")
 ```
 
 ### Start Onboarding
 ```python
-response = requests.post(f"http://localhost:8000/onboarding/{employee_id}/start")
+response = requests.post(f"http://localhost:8050/onboarding/{employee_id}/start")
 print("Onboarding started!")
 ```
 
@@ -192,8 +192,8 @@ record = db.get_onboarding_by_employee_id("emp_john_doe_20241204_143022")
 
 ### Server Not Starting
 ```bash
-# Check if port 8000 is in use
-lsof -i :8000
+# Check if port 8050 is in use
+lsof -i :8050
 
 # Check Python dependencies
 pip install -r requirements.txt
@@ -218,10 +218,10 @@ python -c "from onboarder.database_manager import DatabaseManager; DatabaseManag
 ### API Connection Issues
 ```bash
 # Test server health
-curl http://localhost:8000/health
+curl http://localhost:8050/health
 
 # Test root endpoint
-curl http://localhost:8000/
+curl http://localhost:8050/
 
 # Check server logs
 python main.py  # Run in foreground to see logs
@@ -271,10 +271,10 @@ Your system is working correctly if:
 
 ## 📚 Additional Resources
 
-- **API Documentation**: http://localhost:8000/docs
-- **Alternative Docs**: http://localhost:8000/redoc
-- **Health Check**: http://localhost:8000/health
-- **OpenAPI Schema**: http://localhost:8000/openapi.json
+- **API Documentation**: http://localhost:8050/docs
+- **Alternative Docs**: http://localhost:8050/redoc
+- **Health Check**: http://localhost:8050/health
+- **OpenAPI Schema**: http://localhost:8050/openapi.json
 
 ## 🚀 Next Steps
 

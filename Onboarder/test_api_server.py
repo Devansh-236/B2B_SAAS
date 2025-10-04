@@ -14,7 +14,7 @@ from typing import Dict, Any, List
 from datetime import datetime
 
 # API Configuration
-BASE_URL = "http://localhost:8000"
+BASE_URL = "http://localhost:8050"
 TIMEOUT = 60  # Increased timeout for better performance
 
 # Test Configuration
@@ -287,7 +287,7 @@ class APITester:
         
         # Test basic connectivity
         if not self.test_server_connection():
-            print("\n❌ Server not accessible. Make sure the server is running on http://localhost:8000")
+            print("\n❌ Server not accessible. Make sure the server is running on http://localhost:8050")
             return False
         
         time.sleep(WAIT_BETWEEN_TESTS)
@@ -425,7 +425,7 @@ def main():
     print("🚀 Onboarder API Server Test Suite")
     print("=" * 60)
     print("This script will test all API endpoints and functionality.")
-    print("Make sure the server is running on http://localhost:8000")
+    print("Make sure the server is running on http://localhost:8050")
     print("=" * 60)
     
     # Check if server is running

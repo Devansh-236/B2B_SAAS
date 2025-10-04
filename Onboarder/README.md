@@ -32,7 +32,7 @@ cp env.example .env
 python main.py
 ```
 
-The server will start on `http://localhost:8000` with interactive API documentation at `http://localhost:8000/docs`.
+The server will start on `http://localhost:8050` with interactive API documentation at `http://localhost:8050/docs`.
 
 ## 🏗️ System Architecture
 
@@ -80,15 +80,15 @@ employee_data = {
     "employee_id": "emp_john_doe"
 }
 
-response = requests.post("http://localhost:8000/onboarding", json=employee_data)
+response = requests.post("http://localhost:8050/onboarding", json=employee_data)
 onboarding = response.json()
 
 # Start onboarding process
 employee_id = onboarding["data"]["employee_id"]
-response = requests.post(f"http://localhost:8000/onboarding/{employee_id}/start")
+response = requests.post(f"http://localhost:8050/onboarding/{employee_id}/start")
 
 # Check status
-response = requests.get(f"http://localhost:8000/onboarding/{employee_id}/status")
+response = requests.get(f"http://localhost:8050/onboarding/{employee_id}/status")
 status = response.json()
 ```
 
@@ -217,20 +217,20 @@ black onboarder/ main.py
 
 ### API Documentation
 
-- **Swagger UI**: `http://localhost:8000/docs`
-- **ReDoc**: `http://localhost:8000/redoc`
-- **OpenAPI Schema**: `http://localhost:8000/openapi.json`
+- **Swagger UI**: `http://localhost:8050/docs`
+- **ReDoc**: `http://localhost:8050/redoc`
+- **OpenAPI Schema**: `http://localhost:8050/openapi.json`
 
 ### Health Check
 
 ```bash
-curl http://localhost:8000/health
+curl http://localhost:8050/health
 ```
 
 ### Statistics
 
 ```bash
-curl http://localhost:8000/stats
+curl http://localhost:8050/stats
 ```
 
 ## 🤝 Contributing
