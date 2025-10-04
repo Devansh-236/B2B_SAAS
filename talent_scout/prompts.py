@@ -1,8 +1,7 @@
+import json
+
 def create_resume_parsing_prompt(resume_text):
-    """
-    Creates a prompt to instruct the LLM to parse a resume's text into a
-    structured JSON format.
-    """
+    """Used by the file_parser.py to structure raw resume text."""
     return f"""
     You are an expert HR assistant. Your task is to parse the following resume text and extract the key information into a structured JSON format.
 
@@ -10,62 +9,63 @@ def create_resume_parsing_prompt(resume_text):
     - "name": The full name of the candidate.
     - "email": The primary email address.
     - "skills": A list of key technical and soft skills.
-    - "experience_years": The total number of years of professional experience. If not explicitly stated, estimate based on the work history.
-    - "seniority": An estimated seniority level (e.g., "Junior", "Mid-Level", "Senior", "Lead").
-    - "education": A list of dictionaries, where each dictionary contains "degree" and "institution".
+    - "experience_years": An integer representing the total years of professional experience.
+    - "seniority": An estimated seniority level (e.g., "Junior", "Mid-Level", "Senior").
+    - "education": A list of dictionaries, each containing "degree" and "institution".
 
     Here is the resume text:
     ---
     {resume_text}
     ---
 
-    Please provide the output ONLY in JSON format, like the example below:
-    {{
-      "name": "John Doe",
-      "email": "john.doe@example.com",
-      "skills": ["Python", "Data Analysis", "Machine Learning", "Team Leadership"],
-      "experience_years": 8,
-      "seniority": "Senior",
-      "education": [
-        {{
-          "degree": "Master of Science in Computer Science",
-          "institution": "University of Technology"
-        }}
-      ]
-    }}
+    Please provide the output ONLY in JSON format.
     """
 
-def create_scoring_prompt(job_brief, resume_json):
+def create_structured_scoring_prompt(job_description_text: str, candidate_json: dict) -> str:
     """
-    Creates a prompt for the LLM to score a resume against a job brief.
+    Creates a prompt that asks the LLM to perform a structured analysis.
+    This prompt is the input for the agent's deterministic scoring formula.
     """
     return f"""
-    You are an expert technical recruiter. Your task is to evaluate a candidate's resume against a job description and provide a match score.
+    You are a Senior Technical Recruiter performing a detailed candidate-to-job analysis. Your task is to break down the job description, compare it to the candidate's structured resume, and provide a structured JSON analysis. Do not calculate a final score yourself.
 
-    Here is the job brief:
+    **Step 1: Analyze the Job Description**
+    Read the following job description and extract the key requirements.
     ---
-    Title: {job_brief.get('title')}
-    Must-Have Skills: {', '.join(job_brief.get('required_skills', {}).get('must_have', []))}
-    Optional Skills: {', '.join(job_brief.get('required_skills', {}).get('optional', []))}
-    Required Experience (years): {job_brief.get('experience_years')}
-    ---
-
-    Here is the candidate's parsed resume data:
-    ---
-    {json.dumps(resume_json, indent=2)}
+    **Job Description:**
+    {job_description_text}
     ---
 
-    Please provide a score and a rationale in the following JSON format.
-    The "absolute_score" should be an integer between 0 and 100, where 100 is a perfect match.
-    The "rationale" should be a brief, 2-3 sentence explanation of why you gave this score, highlighting strengths and weaknesses.
+    **Step 2: Analyze the Candidate's Resume**
+    Here is the structured data from the candidate's resume.
+    ---
+    **Candidate JSON:**
+    {json.dumps(candidate_json, indent=2)}
+    ---
 
-    Example output format:
+    **Step 3: Provide Structured Analysis**
+    Based on your analysis, fill out the following JSON object.
+    - `must_have_skills_from_jd` and `optional_skills_from_jd`: list the skills you identified in the JD.
+    - `found_must_have_skills` and `found_optional_skills`: list only the skills present in BOTH the JD and the candidate's resume.
+    - `experience_relevance_score`: provide an integer score from 0 to 10 on how relevant the candidate's experience is to the role.
+    - `education_relevance_score`: provide an integer score from 0 to 10 based on how relevant their education is.
+    - `summary_rationale`: write a concise, 2-sentence summary explaining the candidate's fit.
+
+    **Provide your output ONLY in the following JSON format:**
     {{
-      "absolute_score": 85,
-      "rationale": "The candidate is a strong fit, possessing all must-have skills and the required years of experience. They lack some optional skills like AWS, but their core expertise in Python and Django is excellent."
+      "requirements_analysis": {{
+        "must_have_skills_from_jd": ["Python", "FastAPI", "LangChain", "GCP"],
+        "optional_skills_from_jd": ["Docker", "Kubernetes"],
+        "required_years_experience": 3
+      }},
+      "candidate_evaluation": {{
+        "found_must_have_skills": ["Python", "FastAPI", "LangChain"],
+        "found_optional_skills": ["Docker"],
+        "experience_relevance_score": 9,
+        "education_relevance_score": 8
+      }},
+      "summary_rationale": "The candidate strongly aligns with core technical requirements in Python and LLM frameworks. While they lack GCP experience, their project work is highly relevant."
     }}
-
-    Provide your evaluation ONLY in the JSON format described above.
     """
 
 def create_interview_question_prompt(job_brief, resume_json):

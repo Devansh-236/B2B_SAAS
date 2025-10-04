@@ -1,0 +1,40 @@
+Google Machine Learning Intern (SWE Focus) - Summer 202X
+About the Program
+Join Google for a unique, 12-week paid internship providing hands-on experience working on projects critical to Google’s Machine Learning and core product needs. You will be integrated into a full-time engineering team, applying software engineering principles to large-scale ML systems. This role offers personal and professional development, mentorship from experienced Googlers, and the opportunity to contribute to the next generation of intelligent systems.
+
+Responsibilities
+As a Machine Learning Intern with a Software Engineering focus, you will be responsible for:
+
+Software Development: Design, develop, test, deploy, and maintain robust, scalable software solutions related to machine learning systems.
+
+ML Implementation: Work on a specific, well-scoped project, which may include implementing, training, testing, or optimizing machine learning models (e.g., in areas like Natural Language Processing, Computer Vision, or Search ranking).
+
+Data and Pipeline Management: Collaborate on building and improving data pipelines, data cleaning processes, and infrastructure for large-scale data used in ML model training and evaluation.
+
+System Integration: Integrate developed ML models or features into existing production systems, adhering to Google's engineering best practices.
+
+Code Quality: Participate in design discussions and rigorous code reviews, ensuring high-quality, maintainable code in languages like Python, C++, or Go.
+
+Collaboration: Work closely with your assigned host (mentor), as well as Software Engineers and Research Scientists on your team to deliver on the project goal.
+
+Minimum Qualifications
+Currently enrolled in a Bachelor's, Master's, or PhD degree program in Computer Science, Machine Learning, or a related technical field.
+
+Experience in software development and coding in one or more general-purpose programming languages (e.g., Python, C++, Java).
+
+Experience with data structures and algorithms gathered from coursework, projects, or work experience.
+
+Ability to work full-time for 12 weeks during the summer.
+
+Returning to a degree program after completion of the internship.
+
+Preferred Qualifications
+Experience or coursework in Machine Learning, Deep Learning, Natural Language Processing (NLP), or Computer Vision.
+
+Experience with ML frameworks such as TensorFlow, PyTorch, or JAX.
+
+Familiarity with distributed and parallel systems and working in Unix/Linux environments.
+
+Proven ability to work on large software systems, especially those related to data processing, model serving, or platform development.
+
+Excellent problem-solving, communication, and collaboration skills

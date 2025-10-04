@@ -1,7 +1,12 @@
 # /hr_automation_project/requirements.txt
+fastapi
+uvicorn[standard]
 
+# For handling file uploads in API
+python-multipart
 # The official Google library for the Gemini API
 google-generativeai
+google-genai
 
 # For converting PDF to images (requires system dependencies: Poppler)
 pdf2image
@@ -9,3 +14,4 @@ Pillow
 
 # For performing OCR on images (requires system dependencies: Tesseract)
 pytesseract
+python-dotenv
