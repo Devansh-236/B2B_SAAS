@@ -1,0 +1,416 @@
+"""
+Simple web interface for the Policy Bot.
+
+This module provides a basic HTML interface for interacting with the Policy Bot.
+"""
+
+import os
+import sys
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+
+# Add current directory to path for imports
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from api_server import app as api_app
+from config import API_HOST
+API_PORT = 8001
+
+# Create templates directory
+templates_dir = os.path.join(os.path.dirname(__file__), "templates")
+os.makedirs(templates_dir, exist_ok=True)
+
+# Create static directory
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+os.makedirs(static_dir, exist_ok=True)
+
+# Create a new FastAPI app for the web interface
+web_app = FastAPI(title="Policy Bot Web Interface")
+
+# Mount the API app
+web_app.mount("/api", api_app)
+
+# Set up templates
+templates = Jinja2Templates(directory=templates_dir)
+
+
+@web_app.get("/", response_class=HTMLResponse)
+async def home(request: Request):
+    """Serve the main chat interface."""
+    return templates.TemplateResponse("index.html", {"request": request})
+
+
+# Create the HTML template
+html_template = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Policy Bot - HR Assistant</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            width: 90%;
+            max-width: 800px;
+            height: 600px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #f8f9fa;
+        }
+        
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: flex-start;
+        }
+        
+        .message.user {
+            justify-content: flex-end;
+        }
+        
+        .message.bot {
+            justify-content: flex-start;
+        }
+        
+        .message-content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+        }
+        
+        .message.user .message-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .message.bot .message-content {
+            background: white;
+            border: 1px solid #e1e5e9;
+            color: #333;
+        }
+        
+        .message-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            margin: 0 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .message.user .message-avatar {
+            background: #667eea;
+            color: white;
+        }
+        
+        .message.bot .message-avatar {
+            background: #4facfe;
+            color: white;
+        }
+        
+        .input-container {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e1e5e9;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .input-field {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e1e5e9;
+            border-radius: 25px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        
+        .input-field:focus {
+            border-color: #4facfe;
+        }
+        
+        .send-button {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: transform 0.2s;
+        }
+        
+        .send-button:hover {
+            transform: translateY(-2px);
+        }
+        
+        .send-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 10px;
+            color: #666;
+        }
+        
+        .loading.show {
+            display: block;
+        }
+        
+        .sources {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f0f8ff;
+            border-radius: 8px;
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .sources-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .source-item {
+            margin-bottom: 3px;
+        }
+        
+        .error {
+            color: #e74c3c;
+            background: #fdf2f2;
+            border: 1px solid #fecaca;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 Policy Bot</h1>
+            <p>Your HR Policy Assistant - Ask me anything about company policies!</p>
+        </div>
+        
+        <div class="chat-container">
+            <div class="messages" id="messages">
+                <div class="message bot">
+                    <div class="message-avatar">🤖</div>
+                    <div class="message-content">
+                        Hello! I'm your Policy Bot. I can help you find information about company policies. 
+                        What would you like to know?
+                    </div>
+                </div>
+            </div>
+            
+            <div class="loading" id="loading">
+                <div>🤖 Policy Bot is thinking...</div>
+            </div>
+            
+            <div class="input-container">
+                <input 
+                    type="text" 
+                    class="input-field" 
+                    id="questionInput" 
+                    placeholder="Ask me about company policies..."
+                    onkeypress="handleKeyPress(event)"
+                >
+                <button class="send-button" id="sendButton" onclick="sendQuestion()">
+                    Send
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+        
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendQuestion();
+            }
+        }
+        
+        async function sendQuestion() {
+            const input = document.getElementById('questionInput');
+            const sendButton = document.getElementById('sendButton');
+            const loading = document.getElementById('loading');
+            const messages = document.getElementById('messages');
+            
+            const question = input.value.trim();
+            if (!question) return;
+            
+            // Disable input and show loading
+            input.disabled = true;
+            sendButton.disabled = true;
+            loading.classList.add('show');
+            
+            // Add user message
+            addMessage(question, 'user');
+            input.value = '';
+            
+            try {
+                const response = await fetch(`${API_BASE}/ask`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        question: question,
+                        user_id: 'web_user'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    addMessage(data.answer, 'bot', data.sources);
+                } else {
+                    addMessage(
+                        data.answer || 'Sorry, I encountered an error. Please try again.',
+                        'bot',
+                        null,
+                        true
+                    );
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                addMessage(
+                    'Sorry, I encountered an error. Please try again.',
+                    'bot',
+                    null,
+                    true
+                );
+            } finally {
+                // Re-enable input
+                input.disabled = false;
+                sendButton.disabled = false;
+                loading.classList.remove('show');
+                input.focus();
+            }
+        }
+        
+        function addMessage(content, sender, sources = null, isError = false) {
+            const messages = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            
+            const avatar = document.createElement('div');
+            avatar.className = 'message-avatar';
+            avatar.textContent = sender === 'user' ? '👤' : '🤖';
+            
+            const messageContent = document.createElement('div');
+            messageContent.className = 'message-content';
+            messageContent.textContent = content;
+            
+            if (isError) {
+                messageContent.classList.add('error');
+            }
+            
+            messageDiv.appendChild(avatar);
+            messageDiv.appendChild(messageContent);
+            
+            // Add sources if available
+            if (sources && sources.length > 0) {
+                const sourcesDiv = document.createElement('div');
+                sourcesDiv.className = 'sources';
+                sourcesDiv.innerHTML = `
+                    <div class="sources-title">📚 Sources:</div>
+                    ${sources.map(source => 
+                        `<div class="source-item">• ${source.metadata?.filename || 'Unknown source'}</div>`
+                    ).join('')}
+                `;
+                messageDiv.appendChild(sourcesDiv);
+            }
+            
+            messages.appendChild(messageDiv);
+            messages.scrollTop = messages.scrollHeight;
+        }
+        
+        // Focus input on load
+        document.getElementById('questionInput').focus();
+    </script>
+</body>
+</html>
+"""
+
+# Write the HTML template to file
+with open(os.path.join(templates_dir, "index.html"), "w") as f:
+    f.write(html_template)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    
+    print("🌐 Starting Policy Bot Web Interface...")
+    print(f"Web interface will be available at: http://{API_HOST}:{API_PORT}")
+    print(f"API endpoints available at: http://{API_HOST}:{API_PORT}/api")
+    
+    uvicorn.run(
+        "web_interface:web_app",
+        host=API_HOST,
+        port=API_PORT,
+        reload=True,
+        log_level="info"
+    )
