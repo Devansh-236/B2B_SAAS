@@ -21,6 +21,13 @@ async def upload_candidate_resume(
     from services.jd_service import job_exists
     if not job_exists(job_id):
         raise HTTPException(status_code=404, detail="Job not found")
+    # PDF file type check BEFORE background task
+    filename = getattr(resume_file, 'filename', None)
+    content_type = getattr(resume_file, 'content_type', None)
+    if not (filename and filename.lower().endswith('.pdf')):
+        raise HTTPException(status_code=400, detail="Only PDF file allowed.")
+    if content_type and content_type != "application/pdf":
+        raise HTTPException(status_code=400, detail="Only PDF file allowed.")
     # Enqueue background processing
     background_tasks.add_task(enqueue_resume_processing, job_id, candidate_name, resume_file)
     return {"message": "Resume received. Processing in background."}
