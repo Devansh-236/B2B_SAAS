@@ -17,27 +17,27 @@ When using the API in automation scripts, configure the following timeout values
 
 ```python
 # Recommended timeout settings for automation
-REQUEST_TIMEOUT = 60  # seconds for most endpoints
+REQUEST_TIMEOUT = 30  # seconds for most endpoints
 HEALTH_CHECK_TIMEOUT = 5  # seconds for health checks
-BACKGROUND_PROCESS_WAIT = 120  # seconds for onboarding completion
-POLLING_INTERVAL = 10  # seconds between status checks
+BACKGROUND_PROCESS_WAIT = 60  # seconds for onboarding completion
+POLLING_INTERVAL = 5  # seconds between status checks
 ```
 
 ### Timeout Considerations
 
-1. **Standard Endpoints (5-60 seconds):**
+1. **Standard Endpoints (5-30 seconds):**
    - Health checks: 5 seconds
-   - CRUD operations: 30-60 seconds
-   - Status retrieval: 10-30 seconds
+   - CRUD operations: 15-30 seconds
+   - Status retrieval: 10-15 seconds
 
-2. **Background Process Endpoints (60-300 seconds):**
-   - Starting onboarding: 60-120 seconds
-   - Phase execution: 60-180 seconds
-   - Agent processing: 120-300 seconds
+2. **Background Process Endpoints (30-90 seconds):**
+   - Starting onboarding: 30-60 seconds
+   - Phase execution: 30-60 seconds
+   - Agent processing: 60-90 seconds
 
 3. **Polling Strategy:**
-   - Check status every 10-30 seconds
-   - Maximum wait time: 15-30 minutes for full onboarding
+   - Check status every 5-10 seconds
+   - Maximum wait time: 5-10 minutes for full onboarding
    - Implement exponential backoff for retries
 
 ### Error Handling & Retries
@@ -97,7 +97,7 @@ Get basic API information and available endpoints.
 }
 ```
 
-**Timeout:** 10 seconds
+**Timeout:** 5 seconds
 
 ---
 
@@ -141,7 +141,7 @@ Create a new onboarding record for an employee. This endpoint only creates the r
 }
 ```
 
-**Timeout:** 30 seconds
+**Timeout:** 15 seconds
 
 **Status Codes:**
 - `200`: Success
@@ -188,7 +188,7 @@ Retrieve the current status of an employee's onboarding process.
 - `DAY1_SETUP`: First day preparations
 - `INTEGRATION`: Team integration and training
 
-**Timeout:** 15 seconds
+**Timeout:** 10 seconds
 
 **Status Codes:**
 - `200`: Success
@@ -225,7 +225,7 @@ Start the onboarding process for an employee. This triggers the background agent
 - Use the status endpoint to monitor progress
 - The process runs asynchronously with error handling
 
-**Timeout:** 60-120 seconds (may take longer for initial setup)
+**Timeout:** 30-60 seconds (may take longer for initial setup)
 
 **Status Codes:**
 - `200`: Process started successfully
@@ -276,7 +276,7 @@ Manually update the status of a specific onboarding phase.
 }
 ```
 
-**Timeout:** 30 seconds
+**Timeout:** 15 seconds
 
 **Status Codes:**
 - `200`: Success
@@ -309,7 +309,7 @@ Trigger the execution of a specific onboarding phase.
 }
 ```
 
-**Timeout:** 60-180 seconds (depends on phase complexity)
+**Timeout:** 30-60 seconds (depends on phase complexity)
 
 **Status Codes:**
 - `200`: Phase execution started
@@ -386,7 +386,7 @@ Retrieve a list of all onboarding records, optionally filtered by status.
 }
 ```
 
-**Timeout:** 30 seconds
+**Timeout:** 15 seconds
 
 **Status Codes:**
 - `200`: Success
@@ -420,7 +420,7 @@ Retrieve summary statistics for all onboarding processes.
 }
 ```
 
-**Timeout:** 20 seconds
+**Timeout:** 15 seconds
 
 **Status Codes:**
 - `200`: Success
@@ -441,10 +441,10 @@ class OnboarderAPI:
     
     def __init__(self, base_url: str = "http://localhost:8050"):
         self.base_url = base_url
-        self.timeout = 60
+        self.timeout = 30
         self.health_timeout = 5
-        self.polling_interval = 10
-        self.max_wait_time = 1800  # 30 minutes
+        self.polling_interval = 5
+        self.max_wait_time = 600  # 10 minutes
     
     def health_check(self) -> bool:
         """Check if the API server is healthy."""
@@ -477,7 +477,7 @@ class OnboarderAPI:
         try:
             response = requests.post(
                 f"{self.base_url}/onboarding/{employee_id}/start",
-                timeout=120  # Longer timeout for background processes
+                timeout=60  # Longer timeout for background processes
             )
             response.raise_for_status()
             data = response.json()
@@ -491,7 +491,7 @@ class OnboarderAPI:
         try:
             response = requests.get(
                 f"{self.base_url}/onboarding/{employee_id}/status",
-                timeout=15
+                timeout=10
             )
             response.raise_for_status()
             return response.json()
@@ -531,7 +531,7 @@ class OnboarderAPI:
         try:
             response = requests.get(
                 f"{self.base_url}/onboarding/{employee_id}/context",
-                timeout=15
+                timeout=10
             )
             response.raise_for_status()
             return response.json()
@@ -546,7 +546,7 @@ class OnboarderAPI:
             if status:
                 url += f"?status={status}"
             
-            response = requests.get(url, timeout=30)
+            response = requests.get(url, timeout=15)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
@@ -556,7 +556,7 @@ class OnboarderAPI:
     def get_stats(self) -> Optional[Dict[str, Any]]:
         """Get API statistics."""
         try:
-            response = requests.get(f"{self.base_url}/stats", timeout=20)
+            response = requests.get(f"{self.base_url}/stats", timeout=15)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
@@ -600,7 +600,7 @@ def main():
     
     # Wait for completion
     print("⏳ Waiting for onboarding to complete...")
-    if api.wait_for_completion(employee_id, max_wait=600):  # 10 minutes max
+    if api.wait_for_completion(employee_id, max_wait=300):  # 5 minutes max
         print("🎉 Onboarding completed successfully!")
         
         # Get final status
