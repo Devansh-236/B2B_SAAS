@@ -1,0 +1,5 @@
+.env
+__pycache__/*
+/__pycache__/*
+/onboarder/__pycache__/*
+/onboarder/tools/__pycache__/*

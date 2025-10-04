@@ -1,0 +1,32 @@
+
+            EMPLOYMENT CONTRACT
+            
+            Employee: John Doe
+            Position: Software Engineer
+            Start Date: 2024-01-15
+            Manager: Jane Smith
+            
+            TERMS AND CONDITIONS:
+            
+            1. POSITION AND DUTIES
+            The Employee agrees to serve as Software Engineer and to perform such duties
+            as may be assigned by the Company.
+            
+            2. COMPENSATION
+            The Employee will receive compensation as agreed upon in the offer letter.
+            
+            3. BENEFITS
+            The Employee will be eligible for company benefits as outlined in the
+            employee handbook.
+            
+            4. CONFIDENTIALITY
+            The Employee agrees to maintain confidentiality of all company information.
+            
+            5. TERMINATION
+            Either party may terminate this agreement with appropriate notice.
+            
+            This contract is effective as of 2024-01-15.
+            
+            Employee Signature: _________________ Date: _________
+            Manager Signature: _________________ Date: _________
+            
