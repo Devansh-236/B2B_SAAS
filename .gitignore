@@ -273,3 +273,13 @@ Thumbs.db
 agents/policy_bot/.env
 myenv/*
 .env
+talent_scout/data/jobs/0/job_description.pdf
+talent_scout/data/jobs/0/sckmkzs.pdf
+talent_scout/data/jobs/0/toke.json
+talent_scout/data/jobs/0/toke.pdf
+talent_scout/data/jobs/0/vaibhav.pdf
+talent_scout/data/jobs/0/vqw_bakchiodi.json
+talent_scout/data/jobs/0/vqw_bakchiodi.pdf
+talent_scout/data/jobs/0/vqw.json
+talent_scout/data/jobs/0/vqw.pdf
+.env
