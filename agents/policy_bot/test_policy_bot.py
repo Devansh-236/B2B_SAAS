@@ -128,7 +128,7 @@ def test_api_endpoints():
     try:
         import requests
         
-        base_url = "http://localhost:8000/api"
+        base_url = "http://localhost:8000"
         
         # Test health endpoint
         response = requests.get(f"{base_url}/health")

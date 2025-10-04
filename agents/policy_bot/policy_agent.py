@@ -142,27 +142,19 @@ class PolicyBot:
             | StrOutputParser()
         )
     
-    def add_documents(self, documents: List[Document]):
-        """Add documents to the knowledge base."""
+    def add_documents(self, documents: List[Document]) -> None:
+        """Add documents to the vector store."""
         try:
-            if not self.vectorstore:
-                # Create new vector store
-                self.vectorstore = Chroma.from_documents(
-                    documents=documents,
-                    embedding=self.embeddings,
-                    persist_directory=self.vector_db_path
-                )
-            else:
-                # Add to existing vector store
-                self.vectorstore.add_documents(documents)
+            if not documents:
+                logger.warning("No documents to add")
+                return
             
-            # Persist the changes
-            self.vectorstore.persist()
+            logger.info(f"Adding {len(documents)} documents to vector store")
+            self.vectorstore.add_documents(documents)
             
-            # Recreate the RAG chain with updated vector store
-            self._create_rag_chain()
-            
-            logger.info(f"Successfully added {len(documents)} documents to knowledge base")
+            # Remove the persist() call as it's no longer needed in newer ChromaDB versions
+            # The data is automatically persisted when using persist_directory
+            logger.info("Documents added successfully")
             
         except Exception as e:
             logger.error(f"Error adding documents: {e}")

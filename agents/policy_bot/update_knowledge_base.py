@@ -19,16 +19,25 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def update_knowledge_base():
-    """Update the knowledge base with all documents in the documents directory."""
+def update_knowledge_base(verbose=True):
+    """Update the knowledge base with all documents in the documents directory.
     
-    print("🔄 Updating Knowledge Base...")
-    print("=" * 50)
+    Args:
+        verbose (bool): Whether to print progress messages
+        
+    Returns:
+        bool: True if update successful, False otherwise
+    """
+    
+    if verbose:
+        print("🔄 Updating Knowledge Base...")
+        print("=" * 50)
     
     # Check if documents directory exists
     docs_dir = Path(KNOWLEDGE_BASE_DIR)
     if not docs_dir.exists():
-        print(f"❌ Documents directory not found: {docs_dir}")
+        if verbose:
+            print(f"❌ Documents directory not found: {docs_dir}")
         return False
     
     # List all documents
@@ -37,41 +46,48 @@ def update_knowledge_base():
         supported_files.extend(list(docs_dir.glob(f"*{ext}")))
     
     if not supported_files:
-        print(f"❌ No supported documents found in: {docs_dir}")
-        print("   Supported formats: PDF, DOCX, DOC, TXT")
+        if verbose:
+            print(f"❌ No supported documents found in: {docs_dir}")
+            print("   Supported formats: PDF, DOCX, DOC, TXT")
         return False
     
-    print(f"📚 Found {len(supported_files)} documents:")
-    for file in supported_files:
-        print(f"   - {file.name}")
+    if verbose:
+        print(f"📚 Found {len(supported_files)} documents:")
+        for file in supported_files:
+            print(f"   - {file.name}")
     
     # Process documents
-    print("\n🔄 Processing documents...")
+    if verbose:
+        print("\n🔄 Processing documents...")
     try:
         documents = document_processor.process_documents_from_directory()
         
         if not documents:
-            print("❌ No documents were successfully processed")
+            if verbose:
+                print("❌ No documents were successfully processed")
             return False
         
         # Get document info
         doc_info = document_processor.get_document_info(documents)
-        print(f"✅ Successfully processed {doc_info['total_chunks']} chunks from {doc_info['total_documents']} documents")
+        if verbose:
+            print(f"✅ Successfully processed {doc_info['total_chunks']} chunks from {doc_info['total_documents']} documents")
         
         # Validate documents
         validation = document_processor.validate_documents(documents)
         if not validation['valid']:
-            print("⚠️  Validation issues found:")
-            for error in validation['errors']:
-                print(f"   - {error}")
+            if verbose:
+                print("⚠️  Validation issues found:")
+                for error in validation['errors']:
+                    print(f"   - {error}")
         
-        if validation['warnings']:
+        if validation['warnings'] and verbose:
             print("⚠️  Warnings:")
             for warning in validation['warnings']:
                 print(f"   - {warning}")
         
         # Create new vector store (this will overwrite the old one)
-        print("\n🗄️ Creating new vector database...")
+        if verbose:
+            print("\n🗄️ Creating new vector database...")
         from langchain_huggingface import HuggingFaceEmbeddings
         from langchain_chroma import Chroma
         
@@ -85,7 +101,8 @@ def update_knowledge_base():
         if os.path.exists(VECTOR_DB_PATH):
             import shutil
             shutil.rmtree(VECTOR_DB_PATH)
-            print(f"🗑️  Removed old vector database")
+            if verbose:
+                print(f"🗑️  Removed old vector database")
         
         # Create new vector store
         vectorstore = Chroma.from_documents(
@@ -94,10 +111,12 @@ def update_knowledge_base():
             persist_directory=VECTOR_DB_PATH
         )
         
-        print(f"✅ New vector database created at {VECTOR_DB_PATH}")
+        if verbose:
+            print(f"✅ New vector database created at {VECTOR_DB_PATH}")
         
         # Test the new database
-        print("\n🧪 Testing new knowledge base...")
+        if verbose:
+            print("\n🧪 Testing new knowledge base...")
         retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
         
         test_queries = [
@@ -109,15 +128,18 @@ def update_knowledge_base():
         
         for query in test_queries:
             docs = retriever.invoke(query)
-            print(f"   Query: '{query}' → Found {len(docs)} relevant documents")
+            if verbose:
+                print(f"   Query: '{query}' → Found {len(docs)} relevant documents")
         
-        print("\n🎉 Knowledge base updated successfully!")
-        print("✅ Your Policy Bot now has access to all the latest documents")
+        if verbose:
+            print("\n🎉 Knowledge base updated successfully!")
+            print("✅ Your Policy Bot now has access to all the latest documents")
         
         return True
         
     except Exception as e:
-        print(f"❌ Error updating knowledge base: {e}")
+        if verbose:
+            print(f"❌ Error updating knowledge base: {e}")
         logger.error(f"Knowledge base update error: {e}", exc_info=True)
         return False
 

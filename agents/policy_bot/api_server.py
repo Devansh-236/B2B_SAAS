@@ -10,9 +10,10 @@ import logging
 from typing import Optional, Dict, Any
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+import secrets
 
 # Add current directory to path for imports
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -23,6 +24,9 @@ from config import API_TITLE, API_DESCRIPTION, API_HOST, API_PORT
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+import secrets
+from datetime import datetime
 
 # Create FastAPI app
 app = FastAPI(

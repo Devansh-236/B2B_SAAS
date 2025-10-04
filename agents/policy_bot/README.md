@@ -93,21 +93,386 @@ Simply open the web interface and type your questions:
 
 ### API Usage
 
-**Ask a question:**
+The Policy Bot provides a comprehensive REST API for integration with other systems. All endpoints return JSON responses.
+
+#### Base URL
+```
+http://localhost:8000
+```
+
+#### Authentication
+Currently, no authentication is required. For production use, implement proper authentication.
+
+---
+
+## 🔌 API Endpoints Reference
+
+### 1. Root Endpoint
+**GET** `/`
+
+Get basic API information and available endpoints.
+
+**Response:**
+```json
+{
+  "message": "Policy Bot API is running!",
+  "version": "1.0.0",
+  "docs": "/docs",
+  "health": "/health"
+}
+```
+
+**Example:**
 ```bash
-curl -X POST "http://localhost:8000/api/ask" \
+curl "http://localhost:8000/"
+```
+
+---
+
+### 2. Ask Question
+**POST** `/ask`
+
+Submit a policy question to the bot and get an AI-generated answer.
+
+**Request Body:**
+```json
+{
+  "question": "string (required, min_length=1)",
+  "user_id": "string (optional)"
+}
+```
+
+**Response:**
+```json
+{
+  "answer": "string",
+  "status": "string",
+  "timestamp": "string (ISO format)",
+  "user_id": "string|null",
+  "question": "string|null",
+  "sources": ["list of source documents"],
+  "num_sources": "integer",
+  "error": "string|null"
+}
+```
+
+**Examples:**
+
+*Basic question:*
+```bash
+curl -X POST "http://localhost:8000/ask" \
   -H "Content-Type: application/json" \
-  -d '{"question": "What is the remote work policy?", "user_id": "employee123"}'
+  -d '{"question": "What is the remote work policy?"}'
 ```
 
-**Check health:**
+*Question with user ID:*
 ```bash
-curl "http://localhost:8000/api/health"
+curl -X POST "http://localhost:8000/ask" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "How many vacation days do employees get?",
+    "user_id": "employee123"
+  }'
 ```
 
-**Get statistics:**
+*Sample Response:*
+```json
+{
+  "answer": "According to the employee handbook, employees are entitled to 20 vacation days per year...",
+  "status": "success",
+  "timestamp": "2025-10-04T10:30:00",
+  "user_id": "employee123",
+  "question": "How many vacation days do employees get?",
+  "sources": ["employee_handbook.pdf", "vacation_policy.txt"],
+  "num_sources": 2,
+  "error": null
+}
+```
+
+---
+
+### 3. Health Check
+**GET** `/health`
+
+Check the overall health and status of the Policy Bot system.
+
+**Response:**
+```json
+{
+  "status": "string (healthy|unhealthy)",
+  "knowledge_base": {
+    "total_documents": "integer",
+    "status": "string"
+  },
+  "llm_available": "boolean",
+  "vectorstore_available": "boolean",
+  "timestamp": "string (ISO format)",
+  "error": "string|null"
+}
+```
+
+**Example:**
 ```bash
-curl "http://localhost:8000/api/stats"
+curl "http://localhost:8000/health"
+```
+
+*Sample Response:*
+```json
+{
+  "status": "healthy",
+  "knowledge_base": {
+    "total_documents": 5,
+    "status": "ready"
+  },
+  "llm_available": true,
+  "vectorstore_available": true,
+  "timestamp": "2025-10-04T10:30:00",
+  "error": null
+}
+```
+
+---
+
+### 4. Knowledge Base Statistics
+**GET** `/stats`
+
+Get detailed statistics about the knowledge base.
+
+**Response:**
+```json
+{
+  "total_documents": "integer",
+  "status": "string",
+  "vector_db_path": "string|null",
+  "error": "string|null"
+}
+```
+
+**Example:**
+```bash
+curl "http://localhost:8000/stats"
+```
+
+*Sample Response:*
+```json
+{
+  "total_documents": 5,
+  "status": "ready",
+  "vector_db_path": "./knowledge_base/vector_db",
+  "error": null
+}
+```
+
+---
+
+### 5. Document Information
+**GET** `/docs/info`
+
+Get information about documents currently loaded in the knowledge base.
+
+**Response:**
+```json
+{
+  "total_documents": "integer",
+  "status": "string",
+  "vector_db_path": "string"
+}
+```
+
+**Example:**
+```bash
+curl "http://localhost:8000/docs/info"
+```
+
+---
+
+### 6. Interactive API Documentation
+**GET** `/docs`
+
+Access the automatically generated interactive API documentation (Swagger UI).
+
+**Example:**
+Open in browser: `http://localhost:8000/docs`
+
+---
+
+### 7. Update Knowledge Base (Admin Only)
+**POST** `/admin/update-knowledge-base`
+
+Update the knowledge base with new documents. Requires admin credentials in request body.
+
+**Authentication Required:**
+- Username: `admin_123`
+- Password: `pass123`
+
+**Request Body:**
+```json
+{
+  "username": "string (required)",
+  "password": "string (required)",
+  "force": "boolean (optional, default: false)"
+}
+```
+
+**Response:**
+```json
+{
+  "success": "boolean",
+  "message": "string", 
+  "documents_processed": "integer|null",
+  "timestamp": "string",
+  "error": "string|null"
+}
+```
+
+**Examples:**
+
+*Update knowledge base:*
+```bash
+curl -X POST "http://localhost:8000/admin/update-knowledge-base" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "admin_123",
+    "password": "pass123",
+    "force": false
+  }'
+```
+
+*Sample Response:*
+```json
+{
+  "success": true,
+  "message": "Knowledge base updated successfully",
+  "documents_processed": 8,
+  "timestamp": "2025-10-04T14:30:00",
+  "error": null
+}
+```
+
+---
+
+## 📋 Error Handling
+
+All endpoints follow standard HTTP status codes:
+
+- `200 OK` - Successful request
+- `400 Bad Request` - Invalid request format or missing required fields
+- `404 Not Found` - Endpoint not found
+- `500 Internal Server Error` - Server error
+
+**Error Response Format:**
+```json
+{
+  "error": "Error description",
+  "status": "error_code"
+}
+```
+
+## 🔧 API Integration Examples
+
+### Python Requests
+```python
+import requests
+
+# Ask a question
+response = requests.post(
+    "http://localhost:8000/ask",
+    json={
+        "question": "What is the dress code policy?",
+        "user_id": "emp001"
+    }
+)
+
+if response.status_code == 200:
+    data = response.json()
+    print(f"Answer: {data['answer']}")
+    print(f"Sources: {data['sources']}")
+else:
+    print(f"Error: {response.status_code}")
+```
+
+### JavaScript/Node.js
+```javascript
+const axios = require('axios');
+
+async function askQuestion(question, userId = null) {
+  try {
+    const response = await axios.post('http://localhost:8000/ask', {
+      question: question,
+      user_id: userId
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error:', error.response?.data || error.message);
+  }
+}
+
+// Usage
+askQuestion("What is the remote work policy?", "user123")
+  .then(data => console.log(data.answer));
+```
+
+### cURL Scripts
+```bash
+#!/bin/bash
+# save as ask_policy.sh
+
+QUESTION="$1"
+USER_ID="$2"
+
+if [ -z "$QUESTION" ]; then
+    echo "Usage: $0 'Your question here' [user_id]"
+    exit 1
+fi
+
+PAYLOAD="{\"question\": \"$QUESTION\""
+if [ ! -z "$USER_ID" ]; then
+    PAYLOAD="$PAYLOAD, \"user_id\": \"$USER_ID\""
+fi
+PAYLOAD="$PAYLOAD}"
+
+curl -X POST "http://localhost:8000/ask" \
+  -H "Content-Type: application/json" \
+  -d "$PAYLOAD" | jq '.'
+```
+
+### Web Frontend Integration
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Policy Bot</title>
+</head>
+<body>
+    <input type="text" id="question" placeholder="Ask a policy question...">
+    <button onclick="askQuestion()">Ask</button>
+    <div id="answer"></div>
+
+    <script>
+    async function askQuestion() {
+        const question = document.getElementById('question').value;
+        
+        try {
+            const response = await fetch('http://localhost:8000/ask', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ question: question })
+            });
+            
+            const data = await response.json();
+            document.getElementById('answer').innerHTML = 
+                `<h3>Answer:</h3><p>${data.answer}</p>
+                 <h4>Sources:</h4><ul>${data.sources.map(s => `<li>${s}</li>`).join('')}</ul>`;
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
+    </script>
+</body>
+</html>
 ```
 
 ### Python Integration
