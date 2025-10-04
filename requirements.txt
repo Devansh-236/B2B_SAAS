@@ -1,0 +1,11 @@
+# /hr_automation_project/requirements.txt
+
+# The official Google library for the Gemini API
+google-generativeai
+
+# For converting PDF to images (requires system dependencies: Poppler)
+pdf2image
+Pillow
+
+# For performing OCR on images (requires system dependencies: Tesseract)
+pytesseract
