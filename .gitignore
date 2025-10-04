@@ -270,6 +270,6 @@ yarn-error.log*
 Icon?
 ehthumbs.db
 Thumbs.db
-agents/policy_bot/.env
+policy_bot/.env
 myenv/*
 .env
