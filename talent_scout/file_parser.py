@@ -1,17 +1,16 @@
 from pdf2image import convert_from_path
 import pytesseract
 from prompts import create_resume_parsing_prompt
+from config import BASE_DIR, MAX_PDF_PAGES
+from utils.llm_utils import generate_json, get_gemini_client
 import json
 import os
 import re
-from dotenv import load_dotenv
-from google import genai
 
-load_dotenv()
-
-def _secure_pdf_to_text(file_path: str) -> str:
+def _secure_pdf_to_text(file_path: str, max_pages: int = MAX_PDF_PAGES) -> str:
+    """OCR the first `max_pages` pages of a PDF. Returns "" on failure."""
     try:
-        images = convert_from_path(file_path, dpi=300)
+        images = convert_from_path(file_path, dpi=300, first_page=1, last_page=max_pages)
         full_text = ""
         for image in images:
             text = pytesseract.image_to_string(image, lang='eng')
@@ -49,12 +48,9 @@ def process_resumes_to_json(
 
         try:
             prompt = create_resume_parsing_prompt(raw_text)
-            response = gemini_client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt
-            )
-            cleaned_text = response.text.strip().replace('```json', '').replace('```', '').strip()
-            structured_data = json.loads(cleaned_text)
+            structured_data = generate_json(prompt, client=gemini_client)
+            if not isinstance(structured_data, dict):
+                raise ValueError("LLM response is not a JSON object.")
         except Exception as e:
             print(f"  - LLM parsing failed for {base_filename}: {e}")
             continue
@@ -74,9 +70,8 @@ def process_resumes_to_json(
     return processed_json_paths
 
 if __name__ == "__main__":
-    resume_folder = "resume_files"
-    output_folder = "output_files"
-    api_key = os.getenv("GEMINI_API_KEY")
+    resume_folder = str(BASE_DIR / "resume_files")
+    output_folder = str(BASE_DIR / "output_files")
 
     resume_pdf_paths = [
         os.path.join(resume_folder, f)
@@ -84,8 +79,7 @@ if __name__ == "__main__":
         if f.lower().endswith(".pdf")
     ]
 
-    # Client-style Gemini setup
-    client = genai.Client(api_key=api_key)
+    client = get_gemini_client()
 
     processed_files = process_resumes_to_json(resume_pdf_paths, output_folder, client)
     print("Processed files:")

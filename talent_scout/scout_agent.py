@@ -1,16 +1,18 @@
 from prompts import create_structured_scoring_prompt
+from scoring import calculate_deterministic_score
+from config import BASE_DIR, GEMINI_MODEL
+from utils.llm_utils import generate_json
 import json
 import os
 from google import genai
-from dotenv import load_dotenv
-load_dotenv()
+
 class TalentScoutAgent:
     """
     Ranks candidates using a weighted, deterministic scoring formula. It uses
     the Gemini Client to perform structured analysis, then applies a weighted
     calculation to generate a final, explainable score.
     """
-    def __init__(self, api_key: str, model_name: str = 'gemini-2.5-flash'):
+    def __init__(self, api_key: str, model_name: str = GEMINI_MODEL):
         if not api_key:
             raise ValueError("Gemini API key is required.")
         self.client = genai.Client(api_key=api_key)
@@ -21,64 +23,14 @@ class TalentScoutAgent:
         """Calls the LLM to get the structured analysis of a candidate."""
         try:
             prompt = create_structured_scoring_prompt(jd_text, candidate_data)
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt
-            )
-            cleaned_text = response.text.strip().replace('```json', '').replace('```', '').strip()
-            return json.loads(cleaned_text)
+            analysis = generate_json(prompt, client=self.client, model=self.model_name)
+            if not isinstance(analysis, dict):
+                raise ValueError("LLM response is not a JSON object.")
+            return analysis
         except Exception as e:
             name = candidate_data.get('name', 'N/A')
             print(f"  - LLM analysis failed for candidate {name}: {e}")
             return None
-    def _calculate_deterministic_score(self, analysis: dict, candidate_data: dict) -> dict:
-        """
-        Applies a weighted formula to the structured analysis from the LLM.
-        This ensures consistent and transparent scoring.
-        """
-        # --- SCORING RUBRIC (Total 100 points) ---
-        # 1. Must-Have Skills: 40 points (Most important)
-        # 2. Experience Relevance: 25 points (Quality of experience)
-        # 3. Optional Skills: 15 points (Differentiator)
-        # 4. Years of Experience: 10 points (Binary check)
-        # 5. Education Relevance: 10 points (Tie-breaker)
-        # ----------------------------------------------------
-        
-        scores = {}
-        req = analysis.get("requirements_analysis", {})
-        eval = analysis.get("candidate_evaluation", {})
-
-        # 1. Must-Have Skills Score (Weight: 40)
-        total_must = len(req.get("must_have_skills_from_jd", []))
-        found_must = len(eval.get("found_must_have_skills", []))
-        scores['must_have_skills'] = ((found_must / total_must) * 40) if total_must > 0 else 40
-
-        # 2. Experience Relevance Score (Weight: 25)
-        # LLM provides a score from 0-10, we scale it to 25 points.
-        relevance_score = eval.get("experience_relevance_score", 0)
-        scores['experience_relevance'] = (relevance_score / 10) * 25
-
-        # 3. Optional Skills Score (Weight: 15)
-        total_opt = len(req.get("optional_skills_from_jd", []))
-        found_opt = len(eval.get("found_optional_skills", []))
-        scores['optional_skills'] = ((found_opt / total_opt) * 15) if total_opt > 0 else 15
-
-        # 4. Years of Experience Score (Weight: 10)
-        req_years = req.get("required_years_experience", 0)
-        cand_years = candidate_data.get("experience_years", 0)
-        scores['years_of_experience'] = 10 if cand_years >= req_years else 0
-
-        # 5. Education Relevance Score (Weight: 10)
-        # LLM provides a score from 0-10, we scale it to 10 points.
-        edu_score = eval.get("education_relevance_score", 0)
-        scores['education_relevance'] = (edu_score / 10) * 10
-        
-        # Calculate Total Score and round all values for cleanliness
-        total_score = sum(scores.values())
-        scores_rounded = {k: round(v, 2) for k, v in scores.items()}
-        scores_rounded['total_score'] = round(total_score, 2)
-        
-        return scores_rounded
 
     def rank_candidates_for_job(self, job_description_path: str, candidate_json_paths: list) -> list:
         """
@@ -105,7 +57,7 @@ class TalentScoutAgent:
                 if not analysis:
                     continue
 
-                scores = self._calculate_deterministic_score(analysis, candidate_data)
+                scores = calculate_deterministic_score(analysis, candidate_data)
 
                 ranked_candidates.append({
                     "name": candidate_data.get("name"),
@@ -132,8 +84,8 @@ if __name__ == '__main__':
     else:
         scout = TalentScoutAgent(api_key=GEMINI_API_KEY)
 
-        JOB_POSTINGS_DIR = "job_postings"
-        CANDIDATE_JSON_DIR = "output_files"
+        JOB_POSTINGS_DIR = str(BASE_DIR / "job_postings")
+        CANDIDATE_JSON_DIR = str(BASE_DIR / "output_files")
         target_job_posting = "llm_engineer_jd.txt" 
 
         job_path = os.path.join(JOB_POSTINGS_DIR, target_job_posting)

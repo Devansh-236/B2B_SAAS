@@ -1,17 +1,25 @@
-# /hr_automation_project/requirements.txt
+# talent_scout/requirements.txt
+#
+# System dependencies (not installable with pip, must be on PATH):
+#   - Poppler (used by pdf2image):  macOS `brew install poppler`, Debian/Ubuntu `apt install poppler-utils`
+#   - Tesseract OCR (used by pytesseract):  macOS `brew install tesseract`, Debian/Ubuntu `apt install tesseract-ocr`
+
 fastapi
 uvicorn[standard]
 
 # For handling file uploads in API
 python-multipart
-# The official Google library for the Gemini API
-google-generativeai
+# The official Google Gen AI SDK for the Gemini API
 google-genai
 
-# For converting PDF to images (requires system dependencies: Poppler)
+# For converting PDF to images (requires system dependency: Poppler)
 pdf2image
 Pillow
 
-# For performing OCR on images (requires system dependencies: Tesseract)
+# For performing OCR on images (requires system dependency: Tesseract)
 pytesseract
 python-dotenv
+
+# Development and testing
+pytest
+httpx
