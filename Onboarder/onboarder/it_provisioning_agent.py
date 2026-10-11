@@ -10,7 +10,7 @@ from typing import Dict, Any
 from dotenv import load_dotenv
 import google.generativeai as genai
 
-from .tools.llm_utils import LLMUtils, AgentCollaborator
+from .tools.llm_utils import LLMUtils, AgentCollaborator, LLM_REQUEST_OPTIONS
 
 # Load environment variables
 load_dotenv()
@@ -93,7 +93,9 @@ class ITProvisioningAgent:
             # Provision system access using LLM-driven logic
             access_results = self._provision_system_access_llm(full_name, job_title, system_access)
             
-            # Generate temporary password
+            # Generate temporary password. It is only handed to account creation and is
+            # never stored, returned or logged; delivery to the new hire must happen
+            # out-of-band (e.g. via the identity provider's secure invite flow).
             temp_password = self._generate_temp_password()
             
             # Create user accounts
@@ -119,7 +121,8 @@ class ITProvisioningAgent:
             result = {
                 'status': status,
                 'corporate_email': corporate_email,
-                'temp_password': temp_password,
+                'temp_password_issued': bool(temp_password),
+                'credential_delivery': 'out-of-band',
                 'system_access': system_access,
                 'access_results': access_results,
                 'account_created': account_results,
@@ -155,7 +158,7 @@ class ITProvisioningAgent:
             Handle special characters and spaces appropriately.
             """
             
-            response = self.model.generate_content(prompt)
+            response = self.model.generate_content(prompt, request_options=LLM_REQUEST_OPTIONS)
             email_suggestion = response.text.strip()
             
             # Clean up the response to get just the email
@@ -233,7 +236,6 @@ class ITProvisioningAgent:
         try:
             print(f"👤 Creating user accounts for {full_name}...")
             print(f"Email: {corporate_email}")
-            print(f"Temp password: {temp_password}")
             
             # Mock account creation
             systems = ['Active Directory', 'Email System', 'HR Portal', 'Slack', 'VPN']
@@ -262,7 +264,7 @@ class ITProvisioningAgent:
         alphabet = string.ascii_letters + string.digits + "!@#$%"
         temp_password = ''.join(secrets.choice(alphabet) for _ in range(12))
         
-        print(f"🔑 Generated temporary password: {temp_password}")
+        print("🔑 Generated temporary password (not displayed)")
         return temp_password
     
     def _provision_system_access_llm(self, full_name: str, job_title: str, system_access_data: Dict[str, Any]) -> Dict[str, bool]:
@@ -326,6 +328,9 @@ class ITProvisioningAgent:
         """
         Simulate system provisioning based on system requirements.
         
+        This is a mock: provisioning always succeeds so results are deterministic.
+        Replace with real provisioning calls when integrating with actual systems.
+        
         Args:
             system_name: Name of the system
             access_level: Required access level
@@ -334,27 +339,7 @@ class ITProvisioningAgent:
         Returns:
             bool: True if provisioning succeeded, False otherwise
         """
-        # Simulate different success rates based on priority and complexity
-        success_rates = {
-            'High': 0.95,
-            'Medium': 0.90,
-            'Low': 0.85
-        }
-        
-        # Adjust success rate based on access level complexity
-        complexity_modifiers = {
-            'Admin': 0.8,
-            'Standard': 1.0,
-            'Read-Only': 1.1,
-            'Basic': 1.1
-        }
-        
-        base_rate = success_rates.get(priority, 0.90)
-        modifier = complexity_modifiers.get(access_level, 1.0)
-        final_rate = min(base_rate * modifier, 0.99)  # Cap at 99%
-        
-        import random
-        return random.random() < final_rate
+        return True
     
     def _get_fallback_system_access(self, job_title: str) -> Dict[str, Any]:
         """

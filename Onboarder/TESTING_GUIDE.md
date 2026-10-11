@@ -14,16 +14,25 @@ This guide provides comprehensive testing instructions for the Onboarder FastAPI
 
 ### 2. Automatic Employee ID Generation
 - ✅ Employee IDs are now auto-generated when not provided
-- ✅ Format: `emp_{name_clean}_{timestamp}`
+- ✅ Format: `emp_{name_clean}_{timestamp}_{random6}`
 - ✅ Special characters are cleaned from names
-- ✅ Timestamps ensure uniqueness
+- ✅ A random suffix keeps IDs unique even for same-name hires; a duplicate explicit `employee_id` returns `409`
 
-### 3. Test Scripts Created
+### 3. Test Scripts
 - ✅ `test_api_server.py` - Comprehensive API testing
-- ✅ `quick_demo.py` - Simple demonstration script
+- ✅ `setup.py --demo` - Full onboarding demo without the API server
 - ✅ `reset_database.py` - Database reset utility
 
 ## 🚀 Quick Start Testing
+
+### 0. Offline End-to-End Check (no API key, no server)
+```bash
+python3 tests/e2e_check.py
+```
+
+Runs a full onboarding through all three phases with Gemini mocked and a temporary
+database, plus checks for restart/reset recovery, timeouts, path sanitisation, the
+optional API key and CORS. Exits non-zero if any check fails.
 
 ### 1. Start the Server
 ```bash
@@ -31,27 +40,25 @@ This guide provides comprehensive testing instructions for the Onboarder FastAPI
 ./start_server.sh
 
 # Option 2: Direct Python
-python main.py
-
-# Option 3: Using npx (if published)
-npx onboarder-api
+python3 main.py
 ```
 
-### 2. Run Quick Demo
+### 2. Run a Demo Onboarding (no server needed)
 ```bash
-python quick_demo.py
+python3 setup.py --demo
 ```
 
 This will:
-- Check server connectivity
-- Create a test employee (with auto-generated ID)
-- Start onboarding process
-- Show status updates
-- Display statistics
+- Create a demo employee (with auto-generated ID)
+- Run all onboarding phases through the agent orchestrator
+- Print the final status
 
 ### 3. Run Comprehensive Tests
 ```bash
-python test_api_server.py
+python3 test_api_server.py
+
+# If the server requires an API key or runs elsewhere
+ONBOARDER_API_KEY=... ONBOARDER_BASE_URL=http://127.0.0.1:8050 python3 test_api_server.py
 ```
 
 This will test:
@@ -65,15 +72,13 @@ This will test:
 
 ## 📊 Test Scripts Overview
 
-### `quick_demo.py`
-- **Purpose**: Simple demonstration of basic API functionality
-- **Duration**: ~30 seconds
-- **Tests**: Basic CRUD operations, status checking
-- **Use Case**: Quick verification that server is working
+### `setup.py --demo`
+- **Purpose**: Run one complete onboarding end-to-end without the API server
+- **Use Case**: Quick verification that agents and Gemini access work
 
 ### `test_api_server.py`
 - **Purpose**: Comprehensive testing of all API endpoints
-- **Duration**: ~2-3 minutes
+- **Duration**: a few minutes (it waits for the onboarding run to finish before manual phase updates)
 - **Tests**: All endpoints, error handling, validation, edge cases
 - **Use Case**: Full regression testing, CI/CD integration
 
@@ -116,28 +121,6 @@ print("Onboarding started!")
 ```
 
 ## 📈 Expected Test Results
-
-### Quick Demo Expected Output
-```
-🚀 Onboarder API Quick Demo
-✅ Server is running!
-📝 Creating onboarding for: Demo Employee
-✅ Created employee: emp_demo_employee_20241204_143022
-📊 Getting status for: emp_demo_employee_20241204_143022
-✅ Status: PENDING, Phase: PRE_BOARDING
-🚀 Starting onboarding for: emp_demo_employee_20241204_143022
-✅ Started: Onboarding process started
-⏳ Waiting 3 seconds for processing...
-📊 Checking updated status...
-✅ Updated Status: IN_PROGRESS, Phase: PRE_BOARDING
-📋 Getting onboarding context...
-✅ Context available for phase: PRE_BOARDING
-📝 Getting all onboarding records...
-✅ Found 1 onboarding records
-📈 Getting statistics...
-✅ Statistics: Total onboardings: 1
-🎉 Demo completed!
-```
 
 ### Comprehensive Test Expected Output
 ```
@@ -185,7 +168,7 @@ db.reset_database()
 records = db.get_all_onboarding_records()
 
 # Get by employee ID
-record = db.get_onboarding_by_employee_id("emp_john_doe_20241204_143022")
+record = db.get_onboarding_by_employee_id("emp_john_doe_20241204_143022_a1b2c3")
 ```
 
 ## 🔍 Troubleshooting
@@ -196,7 +179,7 @@ record = db.get_onboarding_by_employee_id("emp_john_doe_20241204_143022")
 lsof -i :8050
 
 # Check Python dependencies
-pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
 
 # Check environment variables
 cat .env
@@ -211,8 +194,8 @@ python reset_database.py
 ls -la onboarding.db
 
 # Remove and recreate
-rm onboarding.db
-python -c "from onboarder.database_manager import DatabaseManager; DatabaseManager()"
+rm onboarding.db onboarding.db-wal onboarding.db-shm
+python3 -c "from onboarder.database_manager import DatabaseManager; DatabaseManager()"
 ```
 
 ### API Connection Issues
@@ -224,7 +207,10 @@ curl http://localhost:8050/health
 curl http://localhost:8050/
 
 # Check server logs
-python main.py  # Run in foreground to see logs
+python3 main.py  # Run in foreground to see logs
+
+# Onboarding stuck in IN_PROGRESS (e.g. server restarted mid-run)
+curl -X POST http://localhost:8050/onboarding/<employee_id>/reset
 ```
 
 ## 📝 Test Data Examples

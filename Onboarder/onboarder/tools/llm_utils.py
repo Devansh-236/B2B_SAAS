@@ -7,11 +7,17 @@ agent collaboration, and intelligent error recovery.
 
 import json
 import logging
+import os
 from typing import Dict, Any, List, Optional, Union
 from datetime import datetime
 import google.generativeai as genai
 
 logger = logging.getLogger(__name__)
+
+# Per-request timeout for every Gemini call. Agents run in worker threads, where
+# signal-based timeouts are unavailable, so the SDK's own timeout is used instead.
+LLM_TIMEOUT_SECONDS = int(os.getenv("ONBOARDER_LLM_TIMEOUT", "30"))
+LLM_REQUEST_OPTIONS = {"timeout": LLM_TIMEOUT_SECONDS}
 
 
 class LLMUtils:
@@ -33,7 +39,7 @@ class LLMUtils:
         expected_schema: Dict[str, Any],
         context: Optional[Dict[str, Any]] = None,
         max_retries: int = 3,
-        timeout_seconds: int = 30
+        timeout_seconds: int = LLM_TIMEOUT_SECONDS
     ) -> Dict[str, Any]:
         """
         Generate a structured JSON response from the LLM.
@@ -43,6 +49,7 @@ class LLMUtils:
             expected_schema: Expected JSON schema for the response
             context: Additional context from other agents
             max_retries: Maximum number of retry attempts
+            timeout_seconds: Per-request timeout passed to the Gemini SDK
             
         Returns:
             Dict[str, Any]: Parsed JSON response or error information
@@ -53,44 +60,31 @@ class LLMUtils:
             
             for attempt in range(max_retries):
                 try:
-                    # Use timeout for LLM generation
-                    import signal
+                    # Use the SDK's per-request timeout. signal.alarm() cannot be used
+                    # here because agents run in worker threads, not the main thread.
+                    response = self.model.generate_content(
+                        enhanced_prompt,
+                        request_options={"timeout": timeout_seconds}
+                    )
                     
-                    def timeout_handler(signum, frame):
-                        raise TimeoutError("LLM generation timed out")
-                    
-                    signal.signal(signal.SIGALRM, timeout_handler)
-                    signal.alarm(timeout_seconds)
-                    
-                    try:
-                        response = self.model.generate_content(enhanced_prompt)
-                        signal.alarm(0)  # Cancel timeout
-                        
-                        if not response.text:
-                            logger.warning(f"Empty response from LLM on attempt {attempt + 1}")
-                            continue
-                        
-                        # Try to parse JSON response
-                        parsed_response = self._parse_json_response(response.text)
-                        
-                        # Validate against expected schema
-                        if self._validate_schema(parsed_response, expected_schema):
-                            logger.info(f"Successfully generated structured response on attempt {attempt + 1}")
-                            return {
-                                'success': True,
-                                'data': parsed_response,
-                                'raw_response': response.text,
-                                'attempts': attempt + 1
-                            }
-                        else:
-                            logger.warning(f"Schema validation failed on attempt {attempt + 1}")
-                            
-                    except TimeoutError:
-                        signal.alarm(0)  # Cancel timeout
-                        logger.warning(f"LLM generation timed out on attempt {attempt + 1}")
-                        if attempt == max_retries - 1:
-                            raise
+                    if not response.text:
+                        logger.warning(f"Empty response from LLM on attempt {attempt + 1}")
                         continue
+                    
+                    # Try to parse JSON response
+                    parsed_response = self._parse_json_response(response.text)
+                    
+                    # Validate against expected schema
+                    if self._validate_schema(parsed_response, expected_schema):
+                        logger.info(f"Successfully generated structured response on attempt {attempt + 1}")
+                        return {
+                            'success': True,
+                            'data': parsed_response,
+                            'raw_response': response.text,
+                            'attempts': attempt + 1
+                        }
+                    else:
+                        logger.warning(f"Schema validation failed on attempt {attempt + 1}")
                         
                 except Exception as e:
                     logger.warning(f"Attempt {attempt + 1} failed: {e}")
@@ -134,7 +128,7 @@ class LLMUtils:
             # Build context-enhanced prompt
             context_prompt = self._build_context_prompt(prompt, agent_insights, previous_responses)
             
-            response = self.model.generate_content(context_prompt)
+            response = self.model.generate_content(context_prompt, request_options=LLM_REQUEST_OPTIONS)
             
             return {
                 'success': True,
@@ -188,7 +182,7 @@ class LLMUtils:
             }}
             """
             
-            response = self.model.generate_content(prompt)
+            response = self.model.generate_content(prompt, request_options=LLM_REQUEST_OPTIONS)
             parsed_response = self._parse_json_response(response.text)
             
             return {

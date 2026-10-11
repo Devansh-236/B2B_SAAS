@@ -4,35 +4,23 @@ A sophisticated FastAPI-based system for automating and managing employee onboar
 
 ## 🚀 Quick Start
 
-### Using npx (Recommended)
-
-```bash
-# Install and start the server
-npx onboarder-api
-
-# Or if you have the package installed globally
-onboarder
-```
-
-### Manual Setup
-
 ```bash
 # Clone and setup
 git clone <repository-url>
 cd Onboarder
 
 # Install dependencies
-pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
 
 # Setup environment
 cp env.example .env
 # Edit .env with your GEMINI_API_KEY
 
-# Start the server
-python main.py
+# Start the server (or: ./start_server.sh)
+python3 main.py
 ```
 
-The server will start on `http://localhost:8050` with interactive API documentation at `http://localhost:8050/docs`.
+The server will start on `http://127.0.0.1:8050` with interactive API documentation at `http://127.0.0.1:8050/docs`. See `SETUP.md` for host, port, CORS and API key settings.
 
 ## 🏗️ System Architecture
 
@@ -59,9 +47,10 @@ The Onboarder system follows a FastAPI-based architecture with proper state mana
 - `POST /onboarding` - Create new onboarding record
 - `GET /onboarding/{employee_id}/status` - Get onboarding status
 - `POST /onboarding/{employee_id}/start` - Start onboarding process
+- `POST /onboarding/{employee_id}/reset` - Reset a stuck or failed onboarding to `PENDING`
 - `POST /onboarding/{employee_id}/phase` - Manually update phase status
 - `GET /onboarding/{employee_id}/context` - Get onboarding context
-- `GET /onboarding/{employee_id}/phase/{phase}/execute` - Execute specific phase
+- `POST /onboarding/{employee_id}/phase/{phase}/execute` - Execute specific phase
 - `GET /onboardings` - List all onboarding records
 - `GET /stats` - Get onboarding statistics
 
@@ -114,15 +103,17 @@ status = response.json()
 
 ### Environment Variables
 
-Create a `.env` file with:
+Create a `.env` file (see `env.example`) with at least:
 
 ```env
 GEMINI_API_KEY=your_gemini_api_key_here
 ```
 
+Optional server settings: `ONBOARDER_HOST` (default `127.0.0.1`), `ONBOARDER_PORT` (default `8050`), `ONBOARDER_RELOAD`, `ONBOARDER_CORS_ORIGINS` and `ONBOARDER_API_KEY`. When `ONBOARDER_API_KEY` is set, all data endpoints require an `X-API-Key` header. Set it whenever the server is reachable from other machines.
+
 ### Database
 
-The system uses SQLite with automatic schema initialization. Database file: `onboarding.db`
+The system uses SQLite with automatic schema initialization. Database file: `onboarding.db` in the Onboarder directory (override with `ONBOARDER_DB_PATH`). Generated documents go to `generated_documents/` (override with `DOCUMENT_OUTPUT_DIR`).
 
 ### Templates
 
@@ -133,7 +124,7 @@ Markdown templates are stored in `onboarder/templates/` and automatically genera
 ### Employee States
 
 - `PENDING` - Onboarding record created, not started
-- `IN_PROGRESS` - Onboarding process active
+- `IN_PROGRESS` - Onboarding process active (use `POST /onboarding/{employee_id}/reset` if a run was interrupted)
 - `COMPLETED` - All phases completed successfully
 - `FAILED` - Process failed or encountered errors
 
@@ -151,45 +142,41 @@ Markdown templates are stored in `onboarder/templates/` and automatically genera
 ```
 Onboarder/
 ├── main.py                 # FastAPI server
-├── package.json           # npx configuration
+├── setup.py               # Database init, status, migration and demo
 ├── start_server.sh        # Server startup script
+├── reset_database.py      # Database reset utility
+├── test_api_server.py     # API test script (run against a live server)
 ├── requirements.txt       # Python dependencies
-├── onboarder/
-│   ├── agent_orchestrator.py  # Agent management
-│   ├── context_manager.py     # Context and templates
-│   ├── database_manager.py    # Database operations
-│   ├── templates/             # Markdown templates
-│   ├── agents/                # Individual agents
-│   └── tools/                 # Utility tools
-└── example_api_usage.py   # Usage examples
+└── onboarder/
+    ├── agent_orchestrator.py  # Agent management
+    ├── context_manager.py     # Context and templates
+    ├── database_manager.py    # Database operations
+    ├── *_agent.py             # Individual agents
+    ├── templates/             # Markdown templates
+    └── tools/                 # Utility tools
 ```
 
 ### Running in Development
 
 ```bash
 # Start with auto-reload
-python main.py
+ONBOARDER_RELOAD=true python3 main.py
 
-# Run example
-python example_api_usage.py
+# Run a full onboarding demo without the server
+python3 setup.py --demo
 ```
 
 ### Testing
 
-   ```bash
-# Quick demo (basic functionality)
-python quick_demo.py
-
-# Comprehensive API tests
-python test_api_server.py
+```bash
+# Comprehensive API tests (server must be running)
+python3 test_api_server.py
 
 # Reset database
-python reset_database.py
+python3 reset_database.py
 
-# Lint code
+# Lint / format (install the tools separately: pip install flake8 black)
 flake8 onboarder/ main.py
-
-# Format code
 black onboarder/ main.py
 ```
 
@@ -211,7 +198,6 @@ black onboarder/ main.py
 - **Error Recovery** - Comprehensive error handling and recovery
 - **Statistics** - Onboarding metrics and analytics
 - **Documentation** - Auto-generated API documentation
-- **npx Support** - Easy installation and usage via npx
 
 ## 📈 Monitoring
 
@@ -243,14 +229,14 @@ curl http://localhost:8050/stats
 
 ## 📄 License
 
-MIT License - see LICENSE file for details.
+MIT License.
 
 ## 🆘 Support
 
 For issues and questions:
 
 1. Check the API documentation at `/docs`
-2. Review the example usage in `example_api_usage.py`
+2. Review the example usage above and in `test_api_server.py`
 3. Check server logs for detailed error information
 4. Ensure your `.env` file is properly configured
 

@@ -7,8 +7,10 @@ A single file that initializes the SQLite database and runs the Onboarder system
 
 import os
 import sys
+import asyncio
 import argparse
 import logging
+from typing import Optional
 from dotenv import load_dotenv
 
 # Add the onboarder package to the Python path
@@ -22,12 +24,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
-def initialize_database(db_path: str = "onboarding.db") -> bool:
+def initialize_database(db_path: Optional[str] = None) -> bool:
     """
     Initialize the SQLite database.
     
     Args:
-        db_path: Path to the database file
+        db_path: Path to the database file (defaults to the DatabaseManager default)
         
     Returns:
         bool: True if successful, False otherwise
@@ -41,7 +43,7 @@ def initialize_database(db_path: str = "onboarding.db") -> bool:
         # Test database connection
         summary = db_manager.get_onboarding_summary()
         print(f"✅ Database initialized successfully")
-        print(f"   Database file: {os.path.abspath(db_path)}")
+        print(f"   Database file: {db_manager.db_path.resolve()}")
         print(f"   Current records: {summary.get('total_onboardings', 0)}")
         
         return True
@@ -51,12 +53,14 @@ def initialize_database(db_path: str = "onboarding.db") -> bool:
         return False
 
 
-def migrate_from_json(json_file: str = "onboarding_state/onboarding_states.json") -> bool:
+def migrate_from_json(json_file: str = "onboarding_state/onboarding_states.json",
+                      db_path: Optional[str] = None) -> bool:
     """
     Migrate data from JSON file to SQLite database.
     
     Args:
         json_file: Path to the JSON state file
+        db_path: Path to the database file (defaults to the DatabaseManager default)
         
     Returns:
         bool: True if migration successful, False otherwise
@@ -70,7 +74,7 @@ def migrate_from_json(json_file: str = "onboarding_state/onboarding_states.json"
         from onboarder.database_manager import DatabaseManager
         
         print(f"🔄 Migrating data from {json_file}...")
-        db_manager = DatabaseManager()
+        db_manager = DatabaseManager(db_path)
         
         success = db_manager.migrate_from_json(json_file)
         
@@ -95,9 +99,12 @@ def migrate_from_json(json_file: str = "onboarding_state/onboarding_states.json"
         return False
 
 
-def run_demo() -> bool:
+def run_demo(db_path: Optional[str] = None) -> bool:
     """
-    Run the onboarding demo.
+    Run the onboarding demo through the AgentOrchestrator (same flow as the API server).
+    
+    Args:
+        db_path: Path to the database file (defaults to the DatabaseManager default)
     
     Returns:
         bool: True if successful, False otherwise
@@ -105,10 +112,11 @@ def run_demo() -> bool:
     try:
         print("🚀 Running onboarding demo...")
         
-        from onboarder.coordinator_agent import CoordinatorAgent
+        from onboarder.database_manager import DatabaseManager
+        from onboarder.agent_orchestrator import AgentOrchestrator
         
-        # Initialize coordinator
-        coordinator = CoordinatorAgent()
+        db_manager = DatabaseManager(db_path)
+        orchestrator = AgentOrchestrator(db_manager)
         
         # Demo new hire data
         demo_data = {
@@ -122,16 +130,32 @@ def run_demo() -> bool:
         
         print(f"📝 Starting onboarding for: {demo_data['full_name']}")
         
-        # Execute onboarding
-        result = coordinator.execute_onboarding(demo_data)
+        onboarding_id = db_manager.create_onboarding_record(demo_data)
+        if not onboarding_id:
+            print("❌ Failed to create onboarding record")
+            return False
         
-        if result['status'] == 'SUCCESS':
+        record = db_manager.get_onboarding_record(onboarding_id)
+        employee_id = record['employee_id']
+        
+        run_id = db_manager.claim_onboarding(onboarding_id)
+        if not run_id:
+            print("❌ Could not start onboarding")
+            return False
+        
+        # Execute onboarding (all phases)
+        asyncio.run(orchestrator.start_onboarding_process(employee_id, onboarding_id, run_id))
+        
+        result = db_manager.get_onboarding_record(onboarding_id)
+        
+        if result['status'] == 'COMPLETED':
             print(f"✅ Onboarding completed successfully!")
-            print(f"   Onboarding ID: {result['onboarding_id']}")
-            print(f"   Duration: {result['onboarding_duration']}")
+            print(f"   Employee ID: {employee_id}")
+            print(f"   Onboarding ID: {onboarding_id}")
+            print(f"   Completed phases: {', '.join(result['completed_phases'])}")
             return True
         else:
-            print(f"❌ Onboarding failed: {result.get('errors', 'Unknown error')}")
+            print(f"❌ Onboarding ended with status {result['status']}: {result.get('errors') or 'Unknown error'}")
             return False
             
     except Exception as e:
@@ -139,9 +163,12 @@ def run_demo() -> bool:
         return False
 
 
-def show_status() -> bool:
+def show_status(db_path: Optional[str] = None) -> bool:
     """
     Show the current status of the system.
+    
+    Args:
+        db_path: Path to the database file (defaults to the DatabaseManager default)
     
     Returns:
         bool: True if successful, False otherwise
@@ -152,10 +179,10 @@ def show_status() -> bool:
         print("📊 Onboarder System Status")
         print("=" * 40)
         
-        db_manager = DatabaseManager()
+        db_manager = DatabaseManager(db_path)
         summary = db_manager.get_onboarding_summary()
         
-        print(f"Database: {os.path.abspath('onboarding.db')}")
+        print(f"Database: {db_manager.db_path.resolve()}")
         print(f"Total onboardings: {summary.get('total_onboardings', 0)}")
         
         status_counts = summary.get('status_counts', {})
@@ -191,7 +218,8 @@ def main():
     parser.add_argument('--migrate', action='store_true', help='Migrate from JSON to SQLite')
     parser.add_argument('--demo', action='store_true', help='Run the onboarding demo')
     parser.add_argument('--status', action='store_true', help='Show system status')
-    parser.add_argument('--db-path', default='onboarding.db', help='Database file path')
+    parser.add_argument('--db-path', default=None,
+                        help='Database file path (default: ONBOARDER_DB_PATH or onboarding.db in the project directory)')
     parser.add_argument('--json-file', default='onboarding_state/onboarding_states.json', help='JSON file to migrate from')
     
     args = parser.parse_args()
@@ -199,8 +227,10 @@ def main():
     print("🚀 Onboarder Setup")
     print("=" * 40)
     
-    # Check if API key is configured
-    if not os.getenv('GEMINI_API_KEY'):
+    no_action = not any([args.init, args.migrate, args.demo, args.status])
+    
+    # The demo calls Gemini, so it needs an API key
+    if (args.demo or no_action) and not os.getenv('GEMINI_API_KEY'):
         print("❌ Error: GEMINI_API_KEY not found in environment variables")
         print("Please set your Gemini API key in the .env file")
         return False
@@ -213,29 +243,29 @@ def main():
     
     # Migrate from JSON
     if args.migrate:
-        success = migrate_from_json(args.json_file) and success
+        success = migrate_from_json(args.json_file, args.db_path) and success
     
     # Show status
     if args.status:
-        success = show_status() and success
+        success = show_status(args.db_path) and success
     
     # Run demo
     if args.demo:
-        success = run_demo() and success
+        success = run_demo(args.db_path) and success
     
     # If no specific action, show status and run demo
-    if not any([args.init, args.migrate, args.demo, args.status]):
+    if no_action:
         print("\n🎯 No specific action requested. Showing status and running demo...")
-        success = show_status() and success
+        success = show_status(args.db_path) and success
         print()
-        success = run_demo() and success
+        success = run_demo(args.db_path) and success
     
     if success:
         print("\n🎉 Setup completed successfully!")
         print("\nNext steps:")
-        print("1. Run 'python example_usage.py' to see more examples")
-        print("2. Run 'python state_management_demo.py' to test state management")
-        print("3. Use the CoordinatorAgent in your own code")
+        print("1. Start the API server with 'python main.py'")
+        print("2. Open http://localhost:8050/docs to explore the API")
+        print("3. Run 'python test_api_server.py' against the running server")
     else:
         print("\n❌ Setup completed with errors. Check the logs above.")
     

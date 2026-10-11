@@ -1,33 +1,74 @@
 """
 Document Generator utility for the Onboarder system.
 
-Provides functionality to generate PDF documents from templates.
+Provides functionality to generate onboarding documents from templates.
+Documents are currently written as plain-text placeholders (.txt), not PDFs.
 """
 
 import os
+import re
+import uuid
 from typing import Dict, Optional
 import logging
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+# Onboarder project directory (parent of the onboarder package)
+PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _default_output_dir() -> str:
+    """Resolve the output directory from DOCUMENT_OUTPUT_DIR, relative to the project directory."""
+    output_dir = os.getenv('DOCUMENT_OUTPUT_DIR', 'generated_documents')
+    return os.path.join(PROJECT_DIR, output_dir)
+
 
 class DocumentGenerator:
     """Utility class for generating documents from templates."""
     
-    def __init__(self, output_dir: str = "generated_documents"):
+    def __init__(self, output_dir: Optional[str] = None):
         """
         Initialize the DocumentGenerator.
         
         Args:
-            output_dir: Directory to save generated documents
+            output_dir: Directory to save generated documents. Defaults to
+                DOCUMENT_OUTPUT_DIR (or "generated_documents") inside the project directory.
         """
-        self.output_dir = output_dir
-        os.makedirs(output_dir, exist_ok=True)
+        self.output_dir = os.path.realpath(output_dir or _default_output_dir())
+        os.makedirs(self.output_dir, exist_ok=True)
+    
+    @staticmethod
+    def _slugify(value: str, max_length: int = 64) -> str:
+        """Reduce a value to a filename-safe slug containing only [a-z0-9_-]."""
+        slug = re.sub(r'[^a-z0-9_-]+', '_', str(value).lower()).strip('_-')
+        return slug[:max_length]
+    
+    def _build_filepath(self, prefix: str, new_hire_data: Dict[str, str]) -> str:
+        """
+        Build a safe, unique path inside output_dir for a generated document.
+        
+        Args:
+            prefix: Document type prefix (e.g. "employment_contract")
+            new_hire_data: Dictionary containing new hire information
+            
+        Returns:
+            str: Absolute path of the file to write
+        """
+        safe_name = self._slugify(new_hire_data.get('full_name') or 'new_hire', 50) or 'new_hire'
+        unique_id = self._slugify(new_hire_data.get('employee_id') or '') or uuid.uuid4().hex[:8]
+        filename = f"{prefix}_{safe_name}_{unique_id}_{datetime.now().strftime('%Y%m%d')}.txt"
+        filepath = os.path.realpath(os.path.join(self.output_dir, filename))
+        
+        # Never write outside the output directory
+        if os.path.dirname(filepath) != self.output_dir:
+            raise ValueError(f"Refusing to write outside output directory: {filepath}")
+        
+        return filepath
     
     def generate_employment_contract(self, new_hire_data: Dict[str, str]) -> str:
         """
-        Generate an employment contract PDF for the new hire.
+        Generate an employment contract (plain-text placeholder) for the new hire.
         
         Args:
             new_hire_data: Dictionary containing new hire information
@@ -42,9 +83,7 @@ class DocumentGenerator:
             manager_name = new_hire_data.get('manager_name', 'Manager')
             
             # Generate filename
-            safe_name = full_name.replace(' ', '_').lower()
-            filename = f"employment_contract_{safe_name}_{datetime.now().strftime('%Y%m%d')}.pdf"
-            filepath = os.path.join(self.output_dir, filename)
+            filepath = self._build_filepath("employment_contract", new_hire_data)
             
             # Generate contract content
             contract_content = f"""
@@ -86,7 +125,7 @@ class DocumentGenerator:
             
             # In a real implementation, you would generate an actual PDF here
             # For now, we'll create a text file as a placeholder
-            with open(filepath.replace('.pdf', '.txt'), 'w') as f:
+            with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(contract_content)
             
             logger.info(f"Employment contract generated: {filepath}")
@@ -110,9 +149,7 @@ class DocumentGenerator:
             full_name = new_hire_data.get('full_name', 'New Hire')
             
             # Generate filename
-            safe_name = full_name.replace(' ', '_').lower()
-            filename = f"personal_info_form_{safe_name}_{datetime.now().strftime('%Y%m%d')}.pdf"
-            filepath = os.path.join(self.output_dir, filename)
+            filepath = self._build_filepath("personal_info_form", new_hire_data)
             
             # Generate form content
             form_content = f"""
@@ -154,7 +191,7 @@ class DocumentGenerator:
             
             # In a real implementation, you would generate an actual PDF here
             # For now, we'll create a text file as a placeholder
-            with open(filepath.replace('.pdf', '.txt'), 'w') as f:
+            with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(form_content)
             
             logger.info(f"Personal info form generated: {filepath}")
@@ -180,9 +217,7 @@ class DocumentGenerator:
             job_title = new_hire_data.get('job_title', 'Employee')
             
             # Generate filename
-            safe_name = full_name.replace(' ', '_').lower()
-            filename = f"integration_plan_{safe_name}_{datetime.now().strftime('%Y%m%d')}.pdf"
-            filepath = os.path.join(self.output_dir, filename)
+            filepath = self._build_filepath("integration_plan", new_hire_data)
             
             # Generate plan content
             plan_content = f"""
@@ -216,7 +251,7 @@ class DocumentGenerator:
             
             # In a real implementation, you would generate an actual PDF here
             # For now, we'll create a text file as a placeholder
-            with open(filepath.replace('.pdf', '.txt'), 'w') as f:
+            with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(plan_content)
             
             logger.info(f"Integration plan generated: {filepath}")

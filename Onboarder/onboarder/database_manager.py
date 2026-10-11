@@ -9,26 +9,47 @@ Replaces the JSON-based state management system.
 import os
 import sqlite3
 import json
+import uuid
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union, Iterable
 from datetime import datetime
 from pathlib import Path
 from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
+# Onboarder project directory (parent of the onboarder package)
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+
+# Columns that update_onboarding_record() may write
+UPDATABLE_COLUMNS = {
+    'new_hire_data', 'status', 'current_phase', 'completed_phases', 'start_time',
+    'end_time', 'process_log', 'errors', 'results', 'onboarding_context', 'run_id'
+}
+JSON_COLUMNS = {'new_hire_data', 'completed_phases', 'process_log', 'errors', 'results', 'onboarding_context'}
+
+
+class DuplicateRecordError(ValueError):
+    """Raised when an onboarding record with the same employee_id/onboarding_id already exists."""
+
+
+def _default_db_path() -> Path:
+    """Resolve the database path from ONBOARDER_DB_PATH, relative to the project directory."""
+    return PROJECT_DIR / os.getenv('ONBOARDER_DB_PATH', 'onboarding.db')
+
 
 class DatabaseManager:
     """Manages SQLite database operations for onboarding processes."""
     
-    def __init__(self, db_path: str = "onboarding.db"):
+    def __init__(self, db_path: Optional[str] = None):
         """
         Initialize the DatabaseManager.
         
         Args:
-            db_path: Path to the SQLite database file
+            db_path: Path to the SQLite database file. Defaults to ONBOARDER_DB_PATH
+                (or "onboarding.db") inside the project directory.
         """
-        self.db_path = Path(db_path)
+        self.db_path = Path(db_path) if db_path else _default_db_path()
         self._init_database()
     
     def _init_database(self) -> None:
@@ -53,6 +74,7 @@ class DatabaseManager:
                     errors TEXT,
                     results TEXT,
                     onboarding_context TEXT,
+                    run_id TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
@@ -119,13 +141,24 @@ class DatabaseManager:
                 # Column already exists, ignore
                 pass
             
+            try:
+                cursor.execute('ALTER TABLE onboarding_records ADD COLUMN run_id TEXT')
+                logger.info("Added run_id column to onboarding_records table")
+            except sqlite3.OperationalError:
+                # Column already exists, ignore
+                pass
+            
+            # WAL allows concurrent readers while a background phase is writing
+            cursor.execute('PRAGMA journal_mode=WAL')
+            
             conn.commit()
             logger.info("Database initialized successfully")
     
     @contextmanager
     def _get_connection(self):
         """Get database connection with proper error handling."""
-        conn = sqlite3.connect(self.db_path)
+        # Wait up to 30s for locks held by other threads/requests instead of failing immediately
+        conn = sqlite3.connect(self.db_path, timeout=30)
         conn.row_factory = sqlite3.Row  # Enable column access by name
         try:
             yield conn
@@ -145,23 +178,28 @@ class DatabaseManager:
             employee_id: Optional employee ID, if not provided will be auto-generated
             
         Returns:
-            str: Unique onboarding ID
+            str: Unique onboarding ID, or "" on failure
+            
+        Raises:
+            DuplicateRecordError: If the employee_id (or onboarding_id) already exists
         """
         try:
-            # Always generate employee ID automatically if not provided
+            # Create a clean name fragment for readable IDs
+            name_clean = (new_hire_data.get('full_name') or 'unknown').lower().replace(' ', '_').replace('-', '_')
+            # Remove special characters
+            name_clean = ''.join(c for c in name_clean if c.isalnum() or c == '_')
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Always generate employee ID automatically if not provided.
+            # A short random suffix avoids collisions for same-name hires in the same second.
             if not employee_id:
-                # Create a clean employee ID from name and timestamp
-                name_clean = new_hire_data.get('full_name', 'unknown').lower().replace(' ', '_').replace('-', '_')
-                # Remove special characters
-                name_clean = ''.join(c for c in name_clean if c.isalnum() or c == '_')
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                employee_id = f"emp_{name_clean}_{timestamp}"
+                employee_id = f"emp_{name_clean}_{timestamp}_{uuid.uuid4().hex[:6]}"
             
             # Generate unique onboarding ID
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            name_clean = new_hire_data.get('full_name', 'unknown').lower().replace(' ', '_').replace('-', '_')
-            name_clean = ''.join(c for c in name_clean if c.isalnum() or c == '_')
-            onboarding_id = f"onboard_{name_clean}_{timestamp}"
+            onboarding_id = f"onboard_{name_clean}_{timestamp}_{uuid.uuid4().hex[:6]}"
+            
+            # Keep the (possibly generated) employee ID with the hire data so agents can use it
+            new_hire_data = {**new_hire_data, 'employee_id': employee_id}
             
             with self._get_connection() as conn:
                 cursor = conn.cursor()
@@ -190,46 +228,68 @@ class DatabaseManager:
                 logger.info(f"Created onboarding record: {onboarding_id}")
                 return onboarding_id
                 
+        except sqlite3.IntegrityError as e:
+            logger.warning(f"Duplicate onboarding record for employee {employee_id}: {e}")
+            raise DuplicateRecordError(f"Employee ID {employee_id} already exists") from e
         except Exception as e:
             logger.error(f"Failed to create onboarding record: {e}")
             return ""
     
-    def update_onboarding_record(self, onboarding_id: str, updates: Dict[str, Any]) -> bool:
+    def update_onboarding_record(self, onboarding_id: str, updates: Dict[str, Any],
+                                 expected_status: Optional[Union[str, Iterable[str]]] = None,
+                                 run_id: Optional[str] = None) -> bool:
         """
         Update an existing onboarding record.
         
         Args:
             onboarding_id: Unique onboarding ID
-            updates: Dictionary of updates to apply
+            updates: Dictionary of updates to apply (keys must be in UPDATABLE_COLUMNS)
+            expected_status: If given, only update when the current status is one of these
+            run_id: If given, only update when the record still belongs to this run
             
         Returns:
-            bool: True if update was successful, False otherwise
+            bool: True if update was successful, False otherwise (including when the
+                record was not in the expected state)
         """
+        invalid_keys = set(updates) - UPDATABLE_COLUMNS
+        if invalid_keys:
+            raise ValueError(f"Cannot update unknown or protected columns: {sorted(invalid_keys)}")
+        
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
                 
-                # Build dynamic update query
+                # Build dynamic update query (column names come from the whitelist above)
                 set_clauses = []
                 values = []
                 
                 for key, value in updates.items():
-                    if key in ['new_hire_data', 'completed_phases', 'process_log', 'errors', 'results', 'onboarding_context']:
-                        set_clauses.append(f"{key} = ?")
-                        values.append(json.dumps(value))
-                    else:
-                        set_clauses.append(f"{key} = ?")
-                        values.append(value)
+                    set_clauses.append(f"{key} = ?")
+                    values.append(json.dumps(value) if key in JSON_COLUMNS else value)
                 
                 set_clauses.append("last_updated = ?")
                 values.append(datetime.now().isoformat())
+                
+                where_clauses = ["onboarding_id = ?"]
                 values.append(onboarding_id)
                 
-                query = f"UPDATE onboarding_records SET {', '.join(set_clauses)} WHERE onboarding_id = ?"
+                if expected_status is not None:
+                    statuses = [expected_status] if isinstance(expected_status, str) else list(expected_status)
+                    where_clauses.append(f"status IN ({', '.join('?' for _ in statuses)})")
+                    values.extend(statuses)
+                
+                if run_id is not None:
+                    where_clauses.append("run_id = ?")
+                    values.append(run_id)
+                
+                query = f"UPDATE onboarding_records SET {', '.join(set_clauses)} WHERE {' AND '.join(where_clauses)}"
                 cursor.execute(query, values)
                 
                 if cursor.rowcount == 0:
-                    logger.error(f"Onboarding ID {onboarding_id} not found")
+                    if expected_status is not None or run_id is not None:
+                        logger.warning(f"Skipped update for {onboarding_id}: record not in expected state")
+                    else:
+                        logger.error(f"Onboarding ID {onboarding_id} not found")
                     return False
                 
                 conn.commit()
@@ -239,6 +299,50 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to update onboarding record: {e}")
             return False
+    
+    def claim_onboarding(self, onboarding_id: str,
+                         blocked_statuses: Iterable[str] = ('IN_PROGRESS', 'COMPLETED')) -> Optional[str]:
+        """
+        Atomically mark an onboarding record as IN_PROGRESS for a new run.
+        
+        The check and the update happen in a single UPDATE statement, so two concurrent
+        requests cannot both start a run for the same record.
+        
+        Args:
+            onboarding_id: Unique onboarding ID
+            blocked_statuses: Statuses from which a new run may not be started
+            
+        Returns:
+            Optional[str]: New run ID if the record was claimed, None otherwise
+        """
+        blocked = list(blocked_statuses)
+        run_id = uuid.uuid4().hex
+        now = datetime.now().isoformat()
+        
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                
+                query = (
+                    "UPDATE onboarding_records SET status = 'IN_PROGRESS', run_id = ?, "
+                    "start_time = ?, end_time = NULL, last_updated = ? WHERE onboarding_id = ?"
+                )
+                values = [run_id, now, now, onboarding_id]
+                if blocked:
+                    query += f" AND status NOT IN ({', '.join('?' for _ in blocked)})"
+                    values.extend(blocked)
+                
+                cursor.execute(query, values)
+                if cursor.rowcount != 1:
+                    return None
+                
+                conn.commit()
+                logger.info(f"Claimed onboarding {onboarding_id} for run {run_id}")
+                return run_id
+                
+        except Exception as e:
+            logger.error(f"Failed to claim onboarding record: {e}")
+            return None
     
     def get_onboarding_record(self, onboarding_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -553,7 +657,7 @@ class DatabaseManager:
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute('SELECT COUNT(*) as count FROM employee_sessions WHERE status = "ACTIVE"')
+                cursor.execute("SELECT COUNT(*) as count FROM employee_sessions WHERE status = 'ACTIVE'")
                 return cursor.fetchone()['count']
         except Exception:
             return 0
@@ -595,18 +699,25 @@ class DatabaseManager:
             migrated_count = 0
             for onboarding_id, state_data in states.items():
                 try:
+                    new_hire_data = state_data.get('new_hire_data', {})
+                    # employee_id is NOT NULL; legacy JSON states may not have one
+                    employee_id = (state_data.get('employee_id')
+                                   or new_hire_data.get('employee_id')
+                                   or f"emp_{onboarding_id}")
+                    
                     with self._get_connection() as conn:
                         cursor = conn.cursor()
                         
                         # Insert onboarding record
                         cursor.execute('''
                             INSERT OR REPLACE INTO onboarding_records 
-                            (onboarding_id, new_hire_data, status, current_phase, completed_phases, 
+                            (employee_id, onboarding_id, new_hire_data, status, current_phase, completed_phases, 
                              start_time, last_updated, end_time, process_log, errors)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ''', (
+                            employee_id,
                             onboarding_id,
-                            json.dumps(state_data.get('new_hire_data', {})),
+                            json.dumps({**new_hire_data, 'employee_id': employee_id}),
                             state_data.get('status', 'IN_PROGRESS'),
                             state_data.get('current_phase', 'PRE_BOARDING'),
                             json.dumps(state_data.get('completed_phases', [])),
@@ -640,8 +751,8 @@ class DatabaseManager:
                     logger.error(f"Failed to migrate record {onboarding_id}: {e}")
                     continue
             
-            logger.info(f"Successfully migrated {migrated_count} records from JSON to SQLite")
-            return True
+            logger.info(f"Migrated {migrated_count} of {len(states)} records from JSON to SQLite")
+            return migrated_count == len(states)
             
         except Exception as e:
             logger.error(f"Failed to migrate from JSON: {e}")
@@ -660,7 +771,7 @@ class DatabaseManager:
         try:
             if not backup_path:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                backup_path = f"onboarding_backup_{timestamp}.db"
+                backup_path = self.db_path.with_name(f"onboarding_backup_{timestamp}.db")
             
             import shutil
             shutil.copy2(self.db_path, backup_path)
@@ -689,7 +800,7 @@ class DatabaseManager:
                 cursor.execute('DELETE FROM onboarding_records')
                 
                 # Reset auto-increment counters
-                cursor.execute('DELETE FROM sqlite_sequence WHERE name IN ("onboarding_records", "phase_results", "employee_sessions", "session_notifications")')
+                cursor.execute("DELETE FROM sqlite_sequence WHERE name IN ('onboarding_records', 'phase_results', 'employee_sessions', 'session_notifications')")
                 
                 conn.commit()
                 logger.info("Database cleared successfully")

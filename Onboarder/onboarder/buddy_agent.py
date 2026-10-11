@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 import google.generativeai as genai
 
 from .tools.email_sender import EmailSender
-from .tools.llm_utils import LLMUtils, AgentCollaborator
+from .tools.llm_utils import LLMUtils, AgentCollaborator, LLM_REQUEST_OPTIONS
 
 # Load environment variables
 load_dotenv()
@@ -80,20 +80,12 @@ class BuddyAgent:
             Choose based on role alignment, experience level, and communication skills.
             """
             
-            # Use timeout for LLM call
-            import signal
-            
-            def timeout_handler(signum, frame):
-                raise TimeoutError("LLM call timed out")
-            
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(30)  # 30 second timeout
-            
+            # The request timeout is enforced by the Gemini SDK inside LLMUtils
+            # (signal-based timeouts do not work in the orchestrator's worker threads)
             try:
                 structured_response = self.llm_utils.generate_structured_response(
-                    prompt, buddy_matching_schema, agent_insights, max_retries=1
+                    prompt, buddy_matching_schema, agent_insights, max_retries=1, timeout_seconds=30
                 )
-                signal.alarm(0)  # Cancel timeout
                 
                 if structured_response['success']:
                     buddy_data = structured_response['data']
@@ -104,8 +96,7 @@ class BuddyAgent:
                     logger.warning(f"Failed to generate structured buddy matching: {structured_response['error']}")
                     raise Exception("LLM generation failed")
                     
-            except (TimeoutError, Exception) as e:
-                signal.alarm(0)  # Cancel timeout
+            except Exception as e:
                 logger.warning(f"LLM call failed or timed out: {e}")
                 # Fallback to basic buddy selection
                 selected_buddy = self._get_fallback_buddy()
@@ -319,7 +310,7 @@ class BuddyAgent:
             Make it practical and actionable.
             """
             
-            response = self.model.generate_content(prompt)
+            response = self.model.generate_content(prompt, request_options=LLM_REQUEST_OPTIONS)
             introduction_plan = response.text
             
             print(f"📋 Generated introduction plan for {full_name} and {buddy_name}")

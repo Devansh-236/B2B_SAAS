@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 import google.generativeai as genai
 
 from .tools.email_sender import EmailSender
+from .tools.llm_utils import LLM_REQUEST_OPTIONS
 
 # Load environment variables
 load_dotenv()
@@ -62,7 +63,7 @@ class WelcomeAgent:
             Keep it concise but friendly.
             """
             
-            response = self.model.generate_content(prompt)
+            response = self.model.generate_content(prompt, request_options=LLM_REQUEST_OPTIONS)
             welcome_message = response.text
             
             # Send welcome email
@@ -114,7 +115,7 @@ class WelcomeAgent:
             Format as a simple list.
             """
             
-            response = self.model.generate_content(prompt)
+            response = self.model.generate_content(prompt, request_options=LLM_REQUEST_OPTIONS)
             kit_contents = response.text
             
             print(f"🎁 Requesting welcome kit for {full_name}...")

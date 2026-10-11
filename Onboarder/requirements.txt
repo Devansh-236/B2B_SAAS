@@ -1,41 +1,18 @@
 # Onboarder Multi-Agent System Requirements
 
 # Core dependencies
-google-generativeai>=0.3.0
+google-generativeai>=0.4.0  # request_options timeouts on generate_content
 python-dotenv>=1.0.0
-
-# Document generation
-reportlab>=4.0.0
-jinja2>=3.1.0
-
-# Calendar and scheduling (optional - for real calendar integration)
-google-api-python-client>=2.100.0
-google-auth-httplib2>=0.1.0
-google-auth-oauthlib>=1.0.0
 
 # Data handling and validation
 pydantic>=2.0.0
-typing-extensions>=4.5.0
-
-# Logging and monitoring
-structlog>=23.1.0
-
-# Real-time features
-threading  # Built-in Python module
-json  # Built-in Python module
-time  # Built-in Python module
 
 # Web server - FastAPI for API server
-fastapi>=0.100.0  # For modern async API
-uvicorn>=0.23.0  # For FastAPI server
+fastapi>=0.100.0
+uvicorn>=0.23.0
 
-# Development dependencies
-pytest>=7.4.0
-pytest-asyncio>=0.21.0
-black>=23.0.0
-flake8>=6.0.0
-mypy>=1.5.0
+# Used by test_api_server.py (manual API test script)
+requests>=2.31.0
 
-# Optional: For enhanced document generation
-# weasyprint>=60.0  # For HTML to PDF conversion
-# markdown>=3.4.0   # For markdown support
+# Development tools (not required at runtime; install separately if wanted):
+#   pip install pytest black flake8 mypy

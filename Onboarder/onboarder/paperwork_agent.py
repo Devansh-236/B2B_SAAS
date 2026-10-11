@@ -12,6 +12,7 @@ import google.generativeai as genai
 
 from .tools.document_generator import DocumentGenerator
 from .tools.email_sender import EmailSender
+from .tools.llm_utils import LLM_REQUEST_OPTIONS
 
 # Load environment variables
 load_dotenv()
@@ -69,14 +70,22 @@ class PaperworkAgent:
             Keep it professional and helpful.
             """
             
-            response = self.model.generate_content(prompt)
+            response = self.model.generate_content(prompt, request_options=LLM_REQUEST_OPTIONS)
             form_instructions = response.text
             
             # Mock e-signature process
             signature_status = self._process_e_signature(new_hire_data, contract_path)
             
-            status = "AWAITING_SIGNATURE" if signature_status == "pending" else "COMPLETED"
-            
+            if not contract_path or not form_path:
+                # Document generation failed; nothing valid to sign or fill in
+                status = "FAIL"
+            elif signature_status == "completed":
+                status = "COMPLETED"
+            elif signature_status == "pending":
+                status = "AWAITING_SIGNATURE"
+            else:
+                status = "FAIL"
+
             result = {
                 'status': status,
                 'contract_generated': bool(contract_path),
@@ -126,7 +135,7 @@ class PaperworkAgent:
             Keep it concise and professional.
             """
             
-            response = self.model.generate_content(prompt)
+            response = self.model.generate_content(prompt, request_options=LLM_REQUEST_OPTIONS)
             signature_message = response.text
             
             print(f"📝 Processing e-signature for {full_name}...")

@@ -256,14 +256,15 @@ class ContextManager:
         lines = content.split('\n')
         
         for line in lines:
-            if line.strip().startswith('- [ ]'):
-                item = line.strip()[4:].strip()  # Remove '- [ ]'
+            stripped = line.strip()
+            if stripped.startswith('- [ ]'):
+                item = stripped[len('- [ ]'):].strip()  # Remove '- [ ]'
                 checklist_items.append({
                     'item': item,
                     'completed': False
                 })
-            elif line.strip().startswith('- [x]'):
-                item = line.strip()[4:].strip()  # Remove '- [x]'
+            elif stripped.lower().startswith('- [x]'):
+                item = stripped[len('- [x]'):].strip()  # Remove '- [x]'
                 checklist_items.append({
                     'item': item,
                     'completed': True

@@ -10,7 +10,7 @@ from typing import Dict, Any, List
 from dotenv import load_dotenv
 import google.generativeai as genai
 
-from .tools.llm_utils import LLMUtils, AgentCollaborator
+from .tools.llm_utils import LLMUtils, AgentCollaborator, LLM_REQUEST_OPTIONS
 
 # Load environment variables
 load_dotenv()
@@ -264,7 +264,7 @@ class TrainingAgent:
             Format as a weekly schedule with specific dates and times.
             """
             
-            response = self.model.generate_content(prompt)
+            response = self.model.generate_content(prompt, request_options=LLM_REQUEST_OPTIONS)
             training_schedule = response.text
             
             print(f"📅 Generated training schedule for {full_name}")
@@ -306,7 +306,7 @@ class TrainingAgent:
             Make it personalized and actionable.
             """
             
-            response = self.model.generate_content(prompt)
+            response = self.model.generate_content(prompt, request_options=LLM_REQUEST_OPTIONS)
             learning_path = response.text
             
             print(f"🎯 Created learning path for {full_name}")
@@ -392,7 +392,8 @@ class TrainingAgent:
                 
         except Exception as e:
             logger.error(f"Failed to enroll in training using LLM: {e}")
-            return []
+            # Malformed LLM output should not fail the whole phase; use the basic enrollment
+            return self._enroll_in_training(new_hire_data, str(training_requirements))
     
     def _generate_training_schedule_llm(self, new_hire_data: Dict[str, str], enrollment_results: List[Dict[str, Any]]) -> str:
         """

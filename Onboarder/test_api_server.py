@@ -6,6 +6,7 @@ This script tests all endpoints and functionality of the Onboarder API server.
 Run this script while the server is running to validate all features.
 """
 
+import os
 import requests
 import json
 import time
@@ -14,8 +15,11 @@ from typing import Dict, Any, List
 from datetime import datetime
 
 # API Configuration
-BASE_URL = "http://localhost:8050"
+BASE_URL = os.getenv("ONBOARDER_BASE_URL", "http://localhost:8050")
 TIMEOUT = 60  # Increased timeout for better performance
+
+# Send the API key if the server requires one (ONBOARDER_API_KEY)
+HEADERS = {"X-API-Key": os.environ["ONBOARDER_API_KEY"]} if os.getenv("ONBOARDER_API_KEY") else {}
 
 # Test Configuration
 WAIT_BETWEEN_TESTS = 2  # seconds
@@ -48,7 +52,7 @@ class APITester:
     def test_server_connection(self) -> bool:
         """Test basic server connectivity."""
         try:
-            response = requests.get(f"{self.base_url}/health", timeout=TIMEOUT)
+            response = requests.get(f"{self.base_url}/health", timeout=TIMEOUT, headers=HEADERS)
             success = response.status_code == 200
             self.log_test("Server Connection", success, 
                          f"Status: {response.status_code}" if success else f"Error: {response.text}")
@@ -60,7 +64,7 @@ class APITester:
     def test_root_endpoint(self) -> bool:
         """Test root endpoint."""
         try:
-            response = requests.get(f"{self.base_url}/", timeout=TIMEOUT)
+            response = requests.get(f"{self.base_url}/", timeout=TIMEOUT, headers=HEADERS)
             success = response.status_code == 200
             data = response.json()
             self.log_test("Root Endpoint", success, 
@@ -74,7 +78,7 @@ class APITester:
         """Test creating an onboarding record."""
         try:
             response = requests.post(f"{self.base_url}/onboarding", 
-                                   json=employee_data, timeout=TIMEOUT)
+                                   json=employee_data, timeout=TIMEOUT, headers=HEADERS)
             success = response.status_code == 200
             data = response.json()
             
@@ -97,7 +101,7 @@ class APITester:
         """Test getting onboarding status."""
         try:
             response = requests.get(f"{self.base_url}/onboarding/{employee_id}/status", 
-                                  timeout=TIMEOUT)
+                                  timeout=TIMEOUT, headers=HEADERS)
             success = response.status_code == 200
             
             if success:
@@ -117,7 +121,7 @@ class APITester:
         """Test starting onboarding process."""
         try:
             response = requests.post(f"{self.base_url}/onboarding/{employee_id}/start", 
-                                   timeout=TIMEOUT)
+                                   timeout=TIMEOUT, headers=HEADERS)
             success = response.status_code == 200
             
             if success:
@@ -137,7 +141,7 @@ class APITester:
         """Test getting onboarding context."""
         try:
             response = requests.get(f"{self.base_url}/onboarding/{employee_id}/context", 
-                                  timeout=TIMEOUT)
+                                  timeout=TIMEOUT, headers=HEADERS)
             success = response.status_code == 200
             
             if success:
@@ -154,12 +158,29 @@ class APITester:
             self.log_test("Get Context", False, f"Request failed: {str(e)}")
             return False
     
+    def wait_for_run_to_finish(self, employee_id: str, max_wait: int = 300) -> str:
+        """Poll the status endpoint until the onboarding is no longer IN_PROGRESS."""
+        deadline = time.time() + max_wait
+        status = "UNKNOWN"
+        while time.time() < deadline:
+            try:
+                response = requests.get(f"{self.base_url}/onboarding/{employee_id}/status",
+                                        timeout=TIMEOUT, headers=HEADERS)
+                status = response.json().get('status', 'UNKNOWN')
+                if status != "IN_PROGRESS":
+                    break
+            except Exception as e:
+                print(f"   Status poll failed: {e}")
+            time.sleep(WAIT_FOR_AGENTS)
+        print(f"   Onboarding status for {employee_id}: {status}")
+        return status
+    
     def test_update_phase(self, employee_id: str, phase: str, status: str) -> bool:
         """Test manually updating phase status."""
         try:
             data = {"phase": phase, "status": status}
             response = requests.post(f"{self.base_url}/onboarding/{employee_id}/phase", 
-                                   json=data, timeout=TIMEOUT)
+                                   json=data, timeout=TIMEOUT, headers=HEADERS)
             success = response.status_code == 200
             
             if success:
@@ -178,8 +199,8 @@ class APITester:
     def test_execute_phase(self, employee_id: str, phase: str) -> bool:
         """Test executing a specific phase."""
         try:
-            response = requests.get(f"{self.base_url}/onboarding/{employee_id}/phase/{phase}/execute", 
-                                  timeout=TIMEOUT)
+            response = requests.post(f"{self.base_url}/onboarding/{employee_id}/phase/{phase}/execute", 
+                                   timeout=TIMEOUT, headers=HEADERS)
             success = response.status_code == 200
             
             if success:
@@ -202,7 +223,7 @@ class APITester:
             if status:
                 url += f"?status={status}"
             
-            response = requests.get(url, timeout=TIMEOUT)
+            response = requests.get(url, timeout=TIMEOUT, headers=HEADERS)
             success = response.status_code == 200
             
             if success:
@@ -222,7 +243,7 @@ class APITester:
     def test_get_stats(self) -> bool:
         """Test getting statistics."""
         try:
-            response = requests.get(f"{self.base_url}/stats", timeout=TIMEOUT)
+            response = requests.get(f"{self.base_url}/stats", timeout=TIMEOUT, headers=HEADERS)
             success = response.status_code == 200
             
             if success:
@@ -244,7 +265,7 @@ class APITester:
         try:
             # Test invalid employee ID
             response = requests.get(f"{self.base_url}/onboarding/invalid_employee_id/status", 
-                                  timeout=TIMEOUT)
+                                  timeout=TIMEOUT, headers=HEADERS)
             success = response.status_code == 404
             
             if success:
@@ -265,7 +286,7 @@ class APITester:
             invalid_data = {"full_name": "Test User"}  # Missing required fields
             
             response = requests.post(f"{self.base_url}/onboarding", 
-                                   json=invalid_data, timeout=TIMEOUT)
+                                   json=invalid_data, timeout=TIMEOUT, headers=HEADERS)
             success = response.status_code == 422  # FastAPI returns 422 for validation errors
             
             if success:
@@ -287,7 +308,7 @@ class APITester:
         
         # Test basic connectivity
         if not self.test_server_connection():
-            print("\n❌ Server not accessible. Make sure the server is running on http://localhost:8050")
+            print(f"\n❌ Server not accessible. Make sure the server is running on {BASE_URL}")
             return False
         
         time.sleep(WAIT_BETWEEN_TESTS)
@@ -362,6 +383,10 @@ class APITester:
         self.test_get_context(employee_id)
         time.sleep(WAIT_BETWEEN_TESTS)
         
+        # Manual phase updates are rejected while a run is in progress
+        print("\n⏳ Waiting for the onboarding run to finish before manual phase updates...")
+        self.wait_for_run_to_finish(employee_id)
+        
         # Test manual phase update
         self.test_update_phase(employee_id, "PRE_BOARDING", "COMPLETED")
         time.sleep(WAIT_BETWEEN_TESTS)
@@ -425,7 +450,7 @@ def main():
     print("🚀 Onboarder API Server Test Suite")
     print("=" * 60)
     print("This script will test all API endpoints and functionality.")
-    print("Make sure the server is running on http://localhost:8050")
+    print(f"Make sure the server is running on {BASE_URL}")
     print("=" * 60)
     
     # Check if server is running

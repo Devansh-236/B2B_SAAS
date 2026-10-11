@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 import google.generativeai as genai
 
 from .tools.calendar_manager import CalendarManager
+from .tools.llm_utils import LLM_REQUEST_OPTIONS
 
 # Load environment variables
 load_dotenv()
@@ -68,7 +69,7 @@ class SchedulerAgent:
             Format as a structured schedule.
             """
             
-            response = self.model.generate_content(prompt)
+            response = self.model.generate_content(prompt, request_options=LLM_REQUEST_OPTIONS)
             meeting_schedule = response.text
             
             # Schedule orientation meeting
@@ -137,7 +138,7 @@ class SchedulerAgent:
             For each meeting, suggest timing, duration, and key objectives.
             """
             
-            response = self.model.generate_content(prompt)
+            response = self.model.generate_content(prompt, request_options=LLM_REQUEST_OPTIONS)
             additional_meetings = response.text
             
             print(f"Additional meetings suggested: {additional_meetings}")
@@ -193,7 +194,7 @@ class SchedulerAgent:
             Format as separate agendas for each review period.
             """
             
-            response = self.model.generate_content(prompt)
+            response = self.model.generate_content(prompt, request_options=LLM_REQUEST_OPTIONS)
             review_agendas = response.text
             
             all_reviews_scheduled = all(review_results)

@@ -60,15 +60,91 @@ class AgentOrchestrator:
         # Phase order
         self.phase_order = ['PRE_BOARDING', 'DAY1_SETUP', 'INTEGRATION']
         
+        # Per-phase timeout in seconds
+        self.phase_timeout = 120
+        
         logger.info("AgentOrchestrator initialized")
     
-    async def start_onboarding_process(self, employee_id: str, onboarding_id: str):
+    def _update_record(self, onboarding_id: str, updates: Dict[str, Any], run_id: Optional[str] = None) -> bool:
+        """
+        Update the onboarding record for an active run and log if the write did not apply.
+        
+        When run_id is given the update only applies while the record is still IN_PROGRESS
+        for that run, so a phase thread that finishes after a timeout, failure or reset
+        cannot overwrite the newer state.
+        """
+        if run_id is not None:
+            success = self.db_manager.update_onboarding_record(
+                onboarding_id, updates, expected_status='IN_PROGRESS', run_id=run_id
+            )
+        else:
+            success = self.db_manager.update_onboarding_record(onboarding_id, updates)
+        
+        if not success:
+            logger.error(f"Database update for {onboarding_id} was not applied: {list(updates.keys())}")
+        return success
+    
+    def get_first_incomplete_phase(self, completed_phases: List[str]) -> str:
+        """
+        Get the first phase that has not been completed yet.
+        
+        Args:
+            completed_phases: List of completed phases
+            
+        Returns:
+            str: First incomplete phase, or 'COMPLETED' if all phases are done
+        """
+        for phase in self.phase_order:
+            if phase not in completed_phases:
+                return phase
+        return 'COMPLETED'
+    
+    def _finalize_run(self, employee_id: str, onboarding_id: str, run_id: Optional[str],
+                      incomplete_status: str):
+        """
+        Set the final status of a run once it stops executing phases.
+        
+        Args:
+            employee_id: Employee ID
+            onboarding_id: Onboarding ID
+            run_id: Run ID that owns the record
+            incomplete_status: Status to use if the run ended without failing but not all
+                phases are complete ('PENDING' for single-phase runs, 'FAILED' otherwise)
+        """
+        final_record = self.db_manager.get_onboarding_record(onboarding_id)
+        if not final_record:
+            logger.error(f"Could not retrieve final record for {employee_id}")
+            return
+        
+        if final_record.get('status') != 'IN_PROGRESS':
+            # Already marked FAILED (or reset); leave it alone
+            return
+        
+        completed_phases = final_record.get('completed_phases', [])
+        if all(phase in completed_phases for phase in self.phase_order):
+            if self._update_record(onboarding_id, {
+                'status': 'COMPLETED',
+                'end_time': datetime.now().isoformat(),
+                'current_phase': 'COMPLETED'
+            }, run_id):
+                logger.info(f"Onboarding completed for {employee_id}")
+        elif incomplete_status == 'FAILED':
+            logger.error(f"Onboarding for {employee_id} stopped with incomplete phases: {completed_phases}")
+            self._update_record(onboarding_id, {
+                'status': 'FAILED',
+                'errors': ["Onboarding stopped before all phases completed"]
+            }, run_id)
+        else:
+            self._update_record(onboarding_id, {'status': incomplete_status}, run_id)
+    
+    async def start_onboarding_process(self, employee_id: str, onboarding_id: str, run_id: Optional[str] = None):
         """
         Start the complete onboarding process for an employee.
         
         Args:
             employee_id: Employee ID
             onboarding_id: Onboarding ID
+            run_id: Run ID returned by DatabaseManager.claim_onboarding()
         """
         try:
             logger.info(f"Starting onboarding process for employee {employee_id}")
@@ -93,10 +169,11 @@ class AgentOrchestrator:
                     logger.info(f"Executing phase {phase} for {employee_id}")
                     
                     try:
-                        # Execute phase with timeout
+                        # Execute phase with timeout. The worker thread cannot be cancelled;
+                        # run_id-conditional writes stop it from clobbering the FAILED status.
                         await asyncio.wait_for(
-                            self._execute_phase_async(employee_id, onboarding_id, phase),
-                            timeout=120  # 2 minutes timeout per phase
+                            self._execute_phase_async(employee_id, onboarding_id, phase, run_id),
+                            timeout=self.phase_timeout
                         )
                         
                         # Check if phase completed successfully
@@ -114,40 +191,67 @@ class AgentOrchestrator:
                         if phase not in updated_record.get('completed_phases', []):
                             logger.error(f"Phase {phase} did not complete for {employee_id}, stopping execution")
                             break
-                            
+
+                        # Refresh so the next phase sees this one as completed
+                        completed_phases = updated_record.get('completed_phases', [])
+
                     except asyncio.TimeoutError:
                         logger.error(f"Phase {phase} timed out for {employee_id}")
-                        self.db_manager.update_onboarding_record(onboarding_id, {
+                        self._update_record(onboarding_id, {
                             'status': 'FAILED',
-                            'errors': [f"Phase {phase} timed out after 2 minutes"]
-                        })
+                            'errors': [f"Phase {phase} timed out after {self.phase_timeout} seconds"]
+                        }, run_id)
                         break
                     except Exception as phase_error:
                         logger.error(f"Phase {phase} failed for {employee_id}: {phase_error}")
-                        self.db_manager.update_onboarding_record(onboarding_id, {
+                        self._update_record(onboarding_id, {
                             'status': 'FAILED',
                             'errors': [f"Phase {phase} failed: {str(phase_error)}"]
-                        })
+                        }, run_id)
                         break
             
-            # Check if all phases are completed
-            final_record = self.db_manager.get_onboarding_record(onboarding_id)
-            if final_record and len(final_record.get('completed_phases', [])) == len(self.phase_order):
-                self.db_manager.update_onboarding_record(onboarding_id, {
-                    'status': 'COMPLETED',
-                    'end_time': datetime.now().isoformat(),
-                    'current_phase': 'COMPLETED'
-                })
-                logger.info(f"Onboarding completed for {employee_id}")
+            # Mark COMPLETED if all phases are done; otherwise make sure the run is not left IN_PROGRESS
+            self._finalize_run(employee_id, onboarding_id, run_id, incomplete_status='FAILED')
             
         except Exception as e:
             logger.error(f"Onboarding process failed for {employee_id}: {e}")
-            self.db_manager.update_onboarding_record(onboarding_id, {
+            self._update_record(onboarding_id, {
                 'status': 'FAILED',
                 'errors': [str(e)]
-            })
+            }, run_id)
     
-    async def _execute_phase_async(self, employee_id: str, onboarding_id: str, phase: str):
+    async def run_single_phase(self, employee_id: str, onboarding_id: str, phase: str, run_id: Optional[str] = None):
+        """
+        Execute a single phase as its own run (used by the execute-phase API endpoint).
+        
+        Args:
+            employee_id: Employee ID
+            onboarding_id: Onboarding ID
+            phase: Phase to execute
+            run_id: Run ID returned by DatabaseManager.claim_onboarding()
+        """
+        try:
+            await asyncio.wait_for(
+                self._execute_phase_async(employee_id, onboarding_id, phase, run_id),
+                timeout=self.phase_timeout
+            )
+            # Leave the record PENDING (not IN_PROGRESS) if more phases remain
+            self._finalize_run(employee_id, onboarding_id, run_id, incomplete_status='PENDING')
+        except asyncio.TimeoutError:
+            logger.error(f"Phase {phase} timed out for {employee_id}")
+            self._update_record(onboarding_id, {
+                'status': 'FAILED',
+                'errors': [f"Phase {phase} timed out after {self.phase_timeout} seconds"]
+            }, run_id)
+        except Exception as e:
+            logger.error(f"Phase {phase} failed for {employee_id}: {e}")
+            self._update_record(onboarding_id, {
+                'status': 'FAILED',
+                'errors': [f"Phase {phase} failed: {str(e)}"]
+            }, run_id)
+    
+    async def _execute_phase_async(self, employee_id: str, onboarding_id: str, phase: str,
+                                   run_id: Optional[str] = None):
         """
         Execute a specific phase for an employee asynchronously.
         
@@ -155,12 +259,13 @@ class AgentOrchestrator:
             employee_id: Employee ID
             onboarding_id: Onboarding ID
             phase: Phase to execute
+            run_id: Run ID that owns the record
         """
         # Run the synchronous execute_phase in a thread pool to avoid blocking
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, self.execute_phase, employee_id, onboarding_id, phase)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self.execute_phase, employee_id, onboarding_id, phase, run_id)
 
-    def execute_phase(self, employee_id: str, onboarding_id: str, phase: str):
+    def execute_phase(self, employee_id: str, onboarding_id: str, phase: str, run_id: Optional[str] = None):
         """
         Execute a specific phase for an employee.
         
@@ -168,6 +273,8 @@ class AgentOrchestrator:
             employee_id: Employee ID
             onboarding_id: Onboarding ID
             phase: Phase to execute
+            run_id: Run ID that owns the record; writes are skipped if the run was
+                superseded (timed out, failed or reset) while this phase was running
         """
         try:
             logger.info(f"Executing phase {phase} for employee {employee_id}")
@@ -241,15 +348,24 @@ class AgentOrchestrator:
             current_results = record.get('results', {})
             current_results[phase.lower()] = phase_results
             
-            # Determine next phase
-            next_phase = self._get_next_phase(phase) if all_success else phase
+            # Determine next phase ('COMPLETED' once every phase is done; current_phase is NOT NULL)
+            next_phase = self.get_first_incomplete_phase(completed_phases) if all_success else phase
             
-            self.db_manager.update_onboarding_record(onboarding_id, {
+            updates = {
                 'current_phase': next_phase,
                 'completed_phases': completed_phases,
                 'results': current_results,
                 'status': 'FAILED' if not all_success else 'IN_PROGRESS'
-            })
+            }
+            if not all_success:
+                failed_agents = [name for name, result in phase_results.items()
+                                 if result.get('status') not in ['SUCCESS', 'COMPLETED', 'AWAITING_SIGNATURE']]
+                updates['errors'] = [f"Phase {phase} failed: agents did not succeed: {', '.join(failed_agents)}"]
+            
+            if not self._update_record(onboarding_id, updates, run_id):
+                logger.error(f"Results of phase {phase} for {employee_id} were not saved "
+                             f"(run superseded or database error)")
+                return
             
             # Update context with phase results
             self.context_manager.update_phase_context(employee_id, phase, phase_results)
@@ -258,10 +374,10 @@ class AgentOrchestrator:
             
         except Exception as e:
             logger.error(f"Phase execution failed for {employee_id}, phase {phase}: {e}")
-            self.db_manager.update_onboarding_record(onboarding_id, {
+            self._update_record(onboarding_id, {
                 'status': 'FAILED',
                 'errors': [f"Phase {phase} failed: {str(e)}"]
-            })
+            }, run_id)
     
     def _run_agent_with_context(self, agent, new_hire_data: Dict[str, Any], context: Dict[str, Any]):
         """

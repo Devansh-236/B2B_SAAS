@@ -12,6 +12,7 @@ import google.generativeai as genai
 
 from .tools.document_generator import DocumentGenerator
 from .scheduler_agent import SchedulerAgent
+from .tools.llm_utils import LLM_REQUEST_OPTIONS
 
 # Load environment variables
 load_dotenv()
@@ -69,7 +70,7 @@ class IntegrationPlannerAgent:
             Make it detailed, actionable, and tailored to the specific role.
             """
             
-            response = self.model.generate_content(prompt)
+            response = self.model.generate_content(prompt, request_options=LLM_REQUEST_OPTIONS)
             integration_plan = response.text
             
             # Parse the plan into structured data
@@ -135,7 +136,7 @@ class IntegrationPlannerAgent:
             }}
             """
             
-            response = self.model.generate_content(prompt)
+            response = self.model.generate_content(prompt, request_options=LLM_REQUEST_OPTIONS)
             structured_data = response.text
             
             # Parse the structured data (in a real implementation, you'd use proper JSON parsing)
@@ -188,7 +189,7 @@ class IntegrationPlannerAgent:
             Make each item specific, measurable, and time-bound.
             """
             
-            response = self.model.generate_content(prompt)
+            response = self.model.generate_content(prompt, request_options=LLM_REQUEST_OPTIONS)
             action_items = response.text
             
             # Create structured timeline

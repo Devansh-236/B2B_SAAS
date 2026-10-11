@@ -4,7 +4,7 @@
 
 The Onboarder API is a RESTful service for managing employee onboarding processes. It provides endpoints to create, monitor, and control onboarding workflows with intelligent agent-based automation.
 
-**Base URL:** `http://localhost:8050`  
+**Base URL:** `http://localhost:8050` (configurable with `ONBOARDER_HOST` / `ONBOARDER_PORT`; the server binds to `127.0.0.1` by default)  
 **API Version:** 1.0.0  
 **Documentation:** `http://localhost:8050/docs` (Swagger UI)  
 **Alternative Docs:** `http://localhost:8050/redoc` (ReDoc)
@@ -51,7 +51,16 @@ EXPONENTIAL_BACKOFF = True
 
 ## Authentication
 
-Currently, the API runs without authentication. In production environments, implement appropriate authentication mechanisms.
+Authentication is optional and controlled by the `ONBOARDER_API_KEY` environment variable:
+
+- If `ONBOARDER_API_KEY` is **not set**, the API is open (intended for local development on `127.0.0.1`).
+- If it **is set**, every endpoint except `/` and `/health` requires the header `X-API-Key: <value>`; missing or wrong keys get `401`.
+
+```bash
+curl -H "X-API-Key: $ONBOARDER_API_KEY" http://localhost:8050/onboardings
+```
+
+CORS is limited to the origins in `ONBOARDER_CORS_ORIGINS` (comma-separated; defaults to `localhost`/`127.0.0.1` on ports 3000 and 8050) and does not allow credentials.
 
 ## Endpoints
 
@@ -146,6 +155,7 @@ Create a new onboarding record for an employee. This endpoint only creates the r
 **Status Codes:**
 - `200`: Success
 - `400`: Bad request (validation error)
+- `409`: An onboarding with this `employee_id` already exists
 - `422`: Validation error (invalid data format)
 - `500`: Internal server error
 
@@ -229,8 +239,38 @@ Start the onboarding process for an employee. This triggers the background agent
 
 **Status Codes:**
 - `200`: Process started successfully
-- `400`: Bad request (already in progress/completed)
 - `404`: Employee not found
+- `409`: Already in progress or already completed
+- `500`: Internal server error
+
+A `FAILED` onboarding can be started again; it resumes from the first incomplete phase.
+
+---
+
+### 5a. Reset Onboarding
+
+**POST** `/onboarding/{employee_id}/reset`
+
+Reset an onboarding that is stuck in `IN_PROGRESS` (for example after a server restart) or has `FAILED` back to `PENDING`, so it can be started again. Completed phases are kept. Any phase still running from the previous run can no longer update the record.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Onboarding reset to PENDING",
+  "data": {
+    "employee_id": "EMP001",
+    "status": "PENDING",
+    "current_phase": "DAY1_SETUP",
+    "completed_phases": ["PRE_BOARDING"]
+  }
+}
+```
+
+**Status Codes:**
+- `200`: Reset
+- `404`: Employee not found
+- `409`: Onboarding already completed
 - `500`: Internal server error
 
 ---
@@ -239,7 +279,7 @@ Start the onboarding process for an employee. This triggers the background agent
 
 **POST** `/onboarding/{employee_id}/phase`
 
-Manually update the status of a specific onboarding phase.
+Manually update the status of a specific onboarding phase. This only records state; it does not run any agents. It is rejected while the onboarding is `IN_PROGRESS`.
 
 **Path Parameters:**
 - `employee_id`: The employee's unique identifier
@@ -258,10 +298,11 @@ Manually update the status of a specific onboarding phase.
 - `INTEGRATION`
 
 **Valid Status Values:**
-- `PENDING`: Phase not started
-- `IN_PROGRESS`: Phase currently running
-- `COMPLETED`: Phase finished successfully
-- `FAILED`: Phase encountered an error
+- `PENDING`: Mark the phase as not completed
+- `COMPLETED`: Mark the phase as finished successfully
+- `FAILED`: Mark the phase as not completed and the onboarding as `FAILED`
+
+To run a phase, use the start or execute endpoints. Afterwards the onboarding status is `COMPLETED` if every phase is completed, `FAILED` if `FAILED` was sent, and `PENDING` otherwise.
 
 **Response:**
 ```json
@@ -270,6 +311,7 @@ Manually update the status of a specific onboarding phase.
   "message": "Phase PRE_BOARDING updated to COMPLETED",
   "data": {
     "employee_id": "EMP001",
+    "status": "PENDING",
     "current_phase": "DAY1_SETUP",
     "completed_phases": ["PRE_BOARDING"]
   }
@@ -280,17 +322,18 @@ Manually update the status of a specific onboarding phase.
 
 **Status Codes:**
 - `200`: Success
-- `400`: Invalid phase or status
 - `404`: Employee not found
+- `409`: Onboarding is in progress (or changed concurrently)
+- `422`: Invalid phase or status
 - `500`: Internal server error
 
 ---
 
 ### 7. Execute Specific Phase
 
-**GET** `/onboarding/{employee_id}/phase/{phase}/execute`
+**POST** `/onboarding/{employee_id}/phase/{phase}/execute`
 
-Trigger the execution of a specific onboarding phase.
+Trigger the execution of a specific onboarding phase in the background. The onboarding is `IN_PROGRESS` while the phase runs; afterwards it is `COMPLETED` if every phase is done, `FAILED` if the phase failed, and `PENDING` otherwise.
 
 **Path Parameters:**
 - `employee_id`: The employee's unique identifier
@@ -313,7 +356,9 @@ Trigger the execution of a specific onboarding phase.
 
 **Status Codes:**
 - `200`: Phase execution started
+- `400`: Invalid phase
 - `404`: Employee not found
+- `409`: Onboarding already in progress
 - `500`: Internal server error
 
 ---
@@ -628,7 +673,9 @@ if __name__ == "__main__":
 
 - `200 OK`: Request successful
 - `400 Bad Request`: Invalid request data
+- `401 Unauthorized`: Missing or invalid `X-API-Key` (when `ONBOARDER_API_KEY` is set)
 - `404 Not Found`: Resource not found
+- `409 Conflict`: Duplicate record, or the onboarding is in a state that does not allow the operation
 - `422 Unprocessable Entity`: Validation error
 - `500 Internal Server Error`: Server error
 

@@ -1,5 +1,7 @@
 .env
-__pycache__/*
-/__pycache__/*
-/onboarder/__pycache__/*
-/onboarder/tools/__pycache__/*
+__pycache__/
+*.pyc
+onboarding.db
+onboarding.db-wal
+onboarding.db-shm
+onboarding_backup_*.db

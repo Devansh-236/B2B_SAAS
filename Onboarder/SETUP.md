@@ -2,117 +2,83 @@
 
 ## Quick Start
 
-The easiest way to get started with Onboarder is using the new setup script:
-
 ```bash
-# Start everything (web dashboard + API server) with automatic port management
-python setup.py --mode web
+# 1. Install dependencies
+python3 -m pip install -r requirements.txt
 
-# Start API server only
-python setup.py --mode api
+# 2. Configure environment
+cp env.example .env
+# Edit .env and set GEMINI_API_KEY
 
-# Start on a specific port
-python setup.py --mode web --port 8081
-
-# Find a free port automatically
-python setup.py --mode web --find-port
+# 3. Start the API server (http://127.0.0.1:8050 by default)
+python3 main.py
 ```
 
-## What the Setup Script Does
+Or use the startup script, which checks `.env`, installs dependencies, initializes the database and starts the server:
 
-1. **🔧 Checks Environment**: Verifies your Gemini API key is configured
-2. **🔪 Kills Port Conflicts**: Automatically kills processes using the target port
-3. **🔍 Finds Free Ports**: Optionally finds alternative ports if needed
-4. **🚀 Starts Services**: Launches the API server and/or web dashboard
-5. **🌐 Opens Browser**: Automatically opens the web dashboard in your browser
-
-## Command Options
-
-| Option | Description | Example |
-|--------|-------------|---------|
-| `--mode` | Launch mode: `api`, `web`, or `both` | `--mode web` |
-| `--port` | Target port number | `--port 8081` |
-| `--no-kill` | Skip killing processes on port | `--no-kill` |
-| `--find-port` | Find free port if target is busy | `--find-port` |
-
-## Examples
-
-### Start Web Dashboard (Recommended)
 ```bash
-python setup.py --mode web
-```
-This will:
-- Kill any processes on port 8080
-- Start the API server
-- Start the web dashboard
-- Open your browser to the dashboard
-
-### Start API Server Only
-```bash
-python setup.py --mode api
+./start_server.sh
 ```
 
-### Use Different Port
+The script stops with an error if `.env` is missing or `GEMINI_API_KEY` is still the placeholder value.
+
+## `setup.py` Commands
+
+`setup.py` initializes the SQLite database and can run a full onboarding demo without the API server.
+
+| Option | Description |
+|--------|-------------|
+| `--init` | Initialize the SQLite database |
+| `--status` | Show onboarding counts by status/phase and recent records |
+| `--demo` | Run a full onboarding for a demo employee through the `AgentOrchestrator` (calls Gemini) |
+| `--migrate` | Migrate records from a legacy JSON state file |
+| `--json-file PATH` | JSON file to migrate from (default: `onboarding_state/onboarding_states.json`) |
+| `--db-path PATH` | Database file to use for all of the above (default: `ONBOARDER_DB_PATH` or `onboarding.db` in the project directory) |
+
+With no options, `setup.py` initializes the database, shows the status and runs the demo.
+
 ```bash
-python setup.py --mode web --port 8081
+python3 setup.py --init
+python3 setup.py --status
+python3 setup.py --demo
+python3 setup.py --status --db-path /tmp/onboarding.db
 ```
 
-### Find Free Port Automatically
-```bash
-python setup.py --mode web --find-port
-```
+## Configuration
+
+All settings are read from environment variables (or `.env`). See `env.example`.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GEMINI_API_KEY` | (required) | Google Gemini API key |
+| `ONBOARDER_HOST` | `127.0.0.1` | Interface the server binds to |
+| `ONBOARDER_PORT` | `8050` | Server port |
+| `ONBOARDER_RELOAD` | `false` | Enable uvicorn auto-reload (development only) |
+| `ONBOARDER_CORS_ORIGINS` | localhost:3000 and localhost:8050 origins | Comma-separated browser origins allowed by CORS |
+| `ONBOARDER_API_KEY` | (unset) | If set, data endpoints require the `X-API-Key` header |
+| `ONBOARDER_DB_PATH` | `onboarding.db` | SQLite database path (relative paths are resolved against the Onboarder directory) |
+| `DOCUMENT_OUTPUT_DIR` | `generated_documents` | Directory for generated documents (relative to the Onboarder directory) |
+
+If you bind to anything other than `127.0.0.1`, set `ONBOARDER_API_KEY`.
 
 ## Troubleshooting
 
-### Port Conflicts
-The setup script automatically handles port conflicts by killing existing processes. If you want to avoid this:
-
+### Port already in use
 ```bash
-python setup.py --mode web --no-kill
+lsof -i :8050
+# or run on another port
+ONBOARDER_PORT=8051 python3 main.py
 ```
 
-### No Free Ports Found
-If the automatic port finding fails, try a different starting port:
+### Onboarding stuck in `IN_PROGRESS`
+If the server was stopped while an onboarding was running, reset it and start again:
 
 ```bash
-python setup.py --mode web --port 9000 --find-port
+curl -X POST http://127.0.0.1:8050/onboarding/<employee_id>/reset
+curl -X POST http://127.0.0.1:8050/onboarding/<employee_id>/start
 ```
 
-### API Key Issues
-Make sure you have your Gemini API key configured:
-
+### Reset the database
 ```bash
-# Copy the example file
-cp env.example .env
-
-# Edit .env and add your API key
-# GEMINI_API_KEY=your_actual_api_key_here
+python3 reset_database.py
 ```
-
-## Alternative Methods
-
-If you prefer more control, you can still use the individual components:
-
-```bash
-# Start server launcher (with port management)
-python start_server.py --mode web
-
-# Start integrated web server directly
-python simple_web_server.py
-
-# Start API server directly
-python realtime_api.py --mode server
-```
-
-## What's New
-
-- ✅ **Single Setup File**: One command handles everything
-- ✅ **Automatic Port Management**: Kills conflicting processes automatically
-- ✅ **Smart Port Finding**: Finds free ports when needed
-- ✅ **Environment Validation**: Checks API key before starting
-- ✅ **Browser Integration**: Automatically opens dashboard
-- ✅ **Simplified Documentation**: Updated all guides to use the new setup
-
----
-
-**Ready to onboard?** Run `python setup.py --mode web` and you're good to go! 🎉
