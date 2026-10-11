@@ -1,159 +1,80 @@
 # HR Automation Multi-Agent System
 
-[](https://github.com/) [](https://opensource.org/licenses/MIT)
+AI agents that automate three HR workflows: resume screening, new-hire onboarding and policy Q&A.
+Each agent is a standalone FastAPI service backed by Google Gemini and lives in its own folder,
+with its own dependencies, configuration and documentation.
 
-A multi-agent automation solution designed to streamline key HR processes, including resume screening, new hire onboarding, and answering company policy questions. This system uses a modular architecture where specialized agents collaborate to perform complex tasks, coordinated by a central orchestrator.
+| Service | Folder | What it does | Default address |
+|---|---|---|---|
+| **TalentScout** | [`talent_scout/`](talent_scout/API_README.md) | OCRs resumes and job descriptions, scores candidates with a deterministic rubric and generates interview questions | `uvicorn` on `127.0.0.1:8000` (use `--port 8002` alongside PolicyBot) |
+| **Onboarder** | [`Onboarder/`](Onboarder/README.md) | Runs pre-boarding, day-1 setup and integration phases through specialised agents, tracked in SQLite | `127.0.0.1:8050` |
+| **PolicyBot** | [`agents/policy_bot/`](agents/policy_bot/README.md) | Answers policy questions with RAG over your documents (Chroma + sentence-transformers) | API `127.0.0.1:8000`, web UI `127.0.0.1:8001` |
 
-## Description
-
-  - **🤖 Automated Resume Screening:** The **TalentScout** agent intelligently parses resumes, scores them against job descriptions, and provides a ranked shortlist of qualified candidates.
-  - **🚀 Dynamic Onboarding Plan Generation:** The **Onboarder** agent creates personalized 30/60/90-day onboarding plans for new hires based on their role and department.
-  - **📚 Instant Policy Q\&A:** The **PolicyBot** agent provides immediate and accurate answers to employee questions by searching a dedicated knowledge base of company policies.
-  - **🧠 Centralized Memory & Orchestration:** An **Orchestrator** manages the workflow, delegating tasks to the appropriate agent. All interactions are logged by the **Archivist** for context and continuity.
-
-## 🏛️ Architecture Overview
-
-The system is built on a multi-agent model:
-
-  - **Orchestrator:** The "brain" of the operation. It receives all incoming requests and routes them to the correct specialist agent.
-  - **TalentScout:** Specializes in analyzing job descriptions and resumes to find the best candidates.
-  - **Onboarder:** Specializes in creating structured and comprehensive onboarding plans.
-  - **PolicyBot:** Specializes in understanding user queries and retrieving information from a knowledge base.
-  - **Archivist (Memory Core):** The central database handler that provides a memory system for all agents, logging interactions and storing results.
-
-## 📁 File Structure
+## Repository layout
 
 ```plaintext
-/hr_automation_project/
-|
-|-- agents/
-|   |-- __init__.py
-|   |-- base_agent.py
-|   |-- orchestrator/
-|   |-- talent_scout/
-|   |-- onboarder/
-|   `-- policy_bot/
-|       `-- knowledge_base/
-|
-|-- core/
-|   |-- memory_system/
-|   |   `-- archivist.py
-|   `-- utils/
-|       |-- file_parser.py
-|       `-- llm_connector.py
-|
-|-- data/
-|   |-- input_resumes/
-|   `-- output_reports/
-|
-|-- tests/
-|   |-- test_talent_scout.py
-|   |-- test_onboarder.py
-|   `-- test_orchestrator.py
-|
-|-- config.py
-|-- main.py
-|-- requirements.txt
-`-- README.md
+.
+├── talent_scout/          # Resume screening API (FastAPI, Gemini, Tesseract OCR)
+│   ├── api/ services/ utils/ schemas/
+│   ├── data/jobs/         # Uploaded JDs and resumes (local only, git-ignored)
+│   └── tests/
+├── Onboarder/             # Onboarding orchestration API (FastAPI, Gemini, SQLite)
+│   ├── onboarder/         # Agents, orchestrator, database and tools
+│   ├── generated_documents/  # Contracts and forms (local only, git-ignored)
+│   └── tests/
+└── agents/policy_bot/     # Policy Q&A (FastAPI, LangChain, Chroma, Gemini)
+    ├── knowledge_base/documents/  # Your policy files
+    └── tests/
 ```
 
-## 🚀 Getting Started
+## Getting started
 
-Follow these instructions to set up and run the project locally.
+Prerequisites: Python 3.10+ (PolicyBot's LangChain dependencies need it; the other two run on 3.9+)
+and a [Gemini API key](https://aistudio.google.com/app/apikey). TalentScout also needs
+Poppler and Tesseract (`brew install poppler tesseract` on macOS).
 
-### Prerequisites
-
-  - Python 3.9+
-  - Git
-
-### Installation
-
-1.  **Clone the repository:**
-
-    ```sh
-    git clone https://github.com/your-username/hr_automation_project.git
-    cd hr_automation_project
-    ```
-
-2.  **Create and activate a virtual environment:**
-
-      * On macOS/Linux:
-        ```sh
-        python3 -m venv venv
-        source venv/bin/activate
-        ```
-      * On Windows:
-        ```sh
-        python -m venv venv
-        .\venv\Scripts\activate
-        ```
-
-3.  **Install the required dependencies:**
-
-    ```sh
-    pip install -r requirements.txt
-    ```
-
-4.  **Configure your settings:**
-
-      * Rename `config.py.template` (you'll need to create this file) to `config.py`.
-      * Add your API keys and other configuration settings to `config.py`.
-
-    *Example `config.py.template`:*
-
-    ```python
-    # /config.py.template
-
-    # LLM API Configuration
-    # Example for OpenAI, adapt for Gemini or other models
-    LLM_API_KEY = "YOUR_API_KEY_HERE"
-    LLM_MODEL_NAME = "gemini-2.5 flash"
-
-    # Database Configuration (Example for SQLite)
-    DATABASE_URL = "sqlite:///hr_data.db"
-
-    # File Paths
-    RESUME_INPUT_DIR = "data/input_resumes/"
-    REPORTS_OUTPUT_DIR = "data/output_reports/"
-    ```
-
-## 💻 Usage
-
-The main entry point for the application is `main.py`. You can interact with the system via the command line.
-
-**Example 1: Screen Resumes for a Job**
+Use a separate virtual environment per service, since their dependencies differ:
 
 ```sh
-python main.py screen --job_desc "path/to/job_description.txt" --resume_dir "data/input_resumes/"
+git clone https://github.com/Devansh-236/B2B_SAAS.git
+cd B2B_SAAS/<service-folder>
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-**Example 2: Create an Onboarding Plan**
+Then configure and start the service:
+
+- **TalentScout**: create `talent_scout/.env` with `GEMINI_API_KEY=...`, then
+  `uvicorn main:app --port 8002`.
+- **Onboarder**: `cp env.example .env`, set `GEMINI_API_KEY`, then `python3 main.py`
+  (or `./start_server.sh`).
+- **PolicyBot**: `cp env_template.txt .env`, set `GOOGLE_API_KEY`, add documents to
+  `knowledge_base/documents/`, run `python setup_knowledge_base.py`, then
+  `python web_interface.py` (UI + API) or `python api_server.py` (API only).
+
+Each service has interactive API docs at `/docs`.
+
+## Security notes
+
+- All services bind to `127.0.0.1` by default. Before exposing Onboarder or PolicyBot on a
+  network, set their API key (`ONBOARDER_API_KEY`, `POLICY_BOT_API_KEY`) and CORS origins.
+  TalentScout has no authentication yet, so keep it local or put it behind an authenticating proxy.
+- Uploaded resumes, candidate records and generated onboarding documents contain personal
+  data. They are git-ignored; keep it that way.
+- `.env` files are git-ignored. Never commit API keys.
+
+## Running tests
+
+All suites run offline: Gemini, OCR and embeddings are mocked.
 
 ```sh
-python main.py onboard --name "Saanvi Desai" --role "Software Engineer" --start_date "2025-10-20"
+cd talent_scout && pytest                  # API, validation and scoring tests
+cd agents/policy_bot && pytest             # RAG pipeline and API tests
+cd Onboarder && python3 tests/e2e_check.py # full onboarding run end to end
 ```
 
-**Example 3: Ask a Policy Question**
+## Contributing
 
-```sh
-python main.py ask --question "What is the company policy on remote work?"
-```
-
-## ✅ Running Tests
-
-To ensure everything is working correctly, run the test suite:
-
-```sh
-pytest
-```
-
-## 🤝 Contributing
-
-Contributions are welcome\! Please follow these steps:
-
-1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/your-feature-name`).
-3.  Make your changes.
-4.  Commit your changes (`git commit -m 'Add some amazing feature'`).
-5.  Push to the branch (`git push origin feature/your-feature-name`).
-6.  Open a Pull Request.
+1. Fork the repository and create a branch (`git checkout -b feature/your-feature-name`).
+2. Make your changes and run the relevant test suite.
+3. Open a pull request.

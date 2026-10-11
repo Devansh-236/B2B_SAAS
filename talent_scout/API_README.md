@@ -27,10 +27,10 @@ Or from the repository root:
 uvicorn --app-dir talent_scout main:app --reload
 ```
 
-If port 8000 is busy, use another port:
+If port 8000 is busy (for example when PolicyBot is running), use another port:
 
 ```bash
-uvicorn main:app --reload --port 8001
+uvicorn main:app --reload --port 8002
 ```
 
 The API docs will be available at: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
