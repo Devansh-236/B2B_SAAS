@@ -270,16 +270,9 @@ yarn-error.log*
 Icon?
 ehthumbs.db
 Thumbs.db
-policy_bot/.env
-myenv/*
-.env
-talent_scout/data/jobs/0/job_description.pdf
-talent_scout/data/jobs/0/sckmkzs.pdf
-talent_scout/data/jobs/0/toke.json
-talent_scout/data/jobs/0/toke.pdf
-talent_scout/data/jobs/0/vaibhav.pdf
-talent_scout/data/jobs/0/vqw_bakchiodi.json
-talent_scout/data/jobs/0/vqw_bakchiodi.pdf
-talent_scout/data/jobs/0/vqw.json
-talent_scout/data/jobs/0/vqw.pdf
-.env
+# Personal data (resumes, candidate records, generated onboarding documents)
+talent_scout/resume_files/*
+talent_scout/output_files/*
+talent_scout/data/jobs/*
+Onboarder/generated_documents/*
+!**/.gitkeep
