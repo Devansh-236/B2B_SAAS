@@ -5,7 +5,7 @@ A sophisticated AI-powered chatbot that answers employee questions about company
 ## 🚀 Features
 
 - **Intelligent Policy Search**: Uses vector embeddings to find relevant policy information
-- **Multiple Document Formats**: Supports PDF, DOCX, DOC, and TXT files
+- **Multiple Document Formats**: Supports PDF, DOCX, and TXT files
 - **REST API**: Complete FastAPI-based API for integration
 - **Web Interface**: Beautiful, responsive web UI for easy interaction
 - **Source Citation**: Always cites which documents the answers come from
@@ -15,8 +15,8 @@ A sophisticated AI-powered chatbot that answers employee questions about company
 ## 📋 Prerequisites
 
 - Python 3.9+
-- Google Gemini API key (get from [Google AI Studio](https://makersuite.google.com/app/apikey))
-- Policy documents in PDF, DOCX, DOC, or TXT format
+- Google Gemini API key (get from [Google AI Studio](https://aistudio.google.com/app/apikey))
+- Policy documents in PDF, DOCX, or TXT format
 
 ## 🛠️ Installation
 
@@ -45,7 +45,7 @@ A sophisticated AI-powered chatbot that answers employee questions about company
 5. **Add your policy documents**
    ```bash
    mkdir -p knowledge_base/documents
-   # Copy your policy documents (PDF, DOCX, DOC, TXT) to knowledge_base/documents/
+   # Copy your policy documents (PDF, DOCX, TXT) to knowledge_base/documents/
    ```
 
 ## 🚀 Quick Start
@@ -64,7 +64,8 @@ This will:
 ### 2. Test the Bot
 
 ```bash
-python test_policy_bot.py
+pytest                       # offline tests (no API key or model download needed)
+python test_policy_bot.py    # end-to-end check against Gemini (needs GOOGLE_API_KEY)
 ```
 
 ### 3. Start the Web Interface
@@ -73,7 +74,7 @@ python test_policy_bot.py
 python web_interface.py
 ```
 
-Open your browser to `http://localhost:8000` and start asking questions!
+Open your browser to `http://localhost:8001` and start asking questions! The web interface also serves the API under `http://localhost:8001/api`.
 
 ### 4. Use the API
 
@@ -81,7 +82,7 @@ Open your browser to `http://localhost:8000` and start asking questions!
 python api_server.py
 ```
 
-API will be available at `http://localhost:8000/api`
+API will be available at `http://localhost:8000`
 
 ## 📚 Usage Examples
 
@@ -101,7 +102,11 @@ http://localhost:8000
 ```
 
 #### Authentication
-Currently, no authentication is required. For production use, implement proper authentication.
+By default no authentication is required and the server only listens on `127.0.0.1`.
+Set `POLICY_BOT_API_KEY` in `.env` to require an `X-API-Key: <value>` header on `/ask`, `/stats`
+and `/docs/info` (the web interface will prompt for the key). `/` and `/health` stay open for monitoring.
+
+Questions are limited to `MAX_QUESTION_LENGTH` characters (default 1000); longer ones get a `422`.
 
 ---
 
@@ -199,7 +204,7 @@ Check the overall health and status of the Policy Bot system.
 **Response:**
 ```json
 {
-  "status": "string (healthy|unhealthy)",
+  "status": "string (healthy|degraded|unhealthy)",
   "knowledge_base": {
     "total_documents": "integer",
     "status": "string"
@@ -222,7 +227,7 @@ curl "http://localhost:8000/health"
   "status": "healthy",
   "knowledge_base": {
     "total_documents": 5,
-    "status": "ready"
+    "status": "active"
   },
   "llm_available": true,
   "vectorstore_available": true,
@@ -241,10 +246,8 @@ Get detailed statistics about the knowledge base.
 **Response:**
 ```json
 {
-  "total_documents": "integer",
-  "status": "string",
-  "vector_db_path": "string|null",
-  "error": "string|null"
+  "total_documents": "integer (number of indexed chunks)",
+  "status": "string (active|no_vectorstore|error)"
 }
 ```
 
@@ -257,9 +260,7 @@ curl "http://localhost:8000/stats"
 ```json
 {
   "total_documents": 5,
-  "status": "ready",
-  "vector_db_path": "./knowledge_base/vector_db",
-  "error": null
+  "status": "active"
 }
 ```
 
@@ -274,8 +275,7 @@ Get information about documents currently loaded in the knowledge base.
 ```json
 {
   "total_documents": "integer",
-  "status": "string",
-  "vector_db_path": "string"
+  "status": "string"
 }
 ```
 
@@ -296,75 +296,20 @@ Open in browser: `http://localhost:8000/docs`
 
 ---
 
-### 7. Update Knowledge Base (Admin Only)
-**POST** `/admin/update-knowledge-base`
-
-Update the knowledge base with new documents. Requires admin credentials in request body.
-
-**Authentication Required:**
-- Username: `admin_123`
-- Password: `pass123`
-
-**Request Body:**
-```json
-{
-  "username": "string (required)",
-  "password": "string (required)",
-  "force": "boolean (optional, default: false)"
-}
-```
-
-**Response:**
-```json
-{
-  "success": "boolean",
-  "message": "string", 
-  "documents_processed": "integer|null",
-  "timestamp": "string",
-  "error": "string|null"
-}
-```
-
-**Examples:**
-
-*Update knowledge base:*
-```bash
-curl -X POST "http://localhost:8000/admin/update-knowledge-base" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "admin_123",
-    "password": "pass123",
-    "force": false
-  }'
-```
-
-*Sample Response:*
-```json
-{
-  "success": true,
-  "message": "Knowledge base updated successfully",
-  "documents_processed": 8,
-  "timestamp": "2025-10-04T14:30:00",
-  "error": null
-}
-```
-
----
-
 ## 📋 Error Handling
 
 All endpoints follow standard HTTP status codes:
 
 - `200 OK` - Successful request
-- `400 Bad Request` - Invalid request format or missing required fields
+- `401 Unauthorized` - Missing or wrong `X-API-Key` (only when `POLICY_BOT_API_KEY` is set)
 - `404 Not Found` - Endpoint not found
-- `500 Internal Server Error` - Server error
+- `422 Unprocessable Entity` - Invalid request (e.g. empty or too-long question)
+- `500 Internal Server Error` - Server error (details are logged, not returned)
 
 **Error Response Format:**
 ```json
 {
-  "error": "Error description",
-  "status": "error_code"
+  "detail": "Error description"
 }
 ```
 
@@ -386,7 +331,7 @@ response = requests.post(
 if response.status_code == 200:
     data = response.json()
     print(f"Answer: {data['answer']}")
-    print(f"Sources: {data['sources']}")
+    print(f"Sources: {[s['metadata']['filename'] for s in data['sources']]}")
 else:
     print(f"Error: {response.status_code}")
 ```
@@ -454,6 +399,7 @@ curl -X POST "http://localhost:8000/ask" \
         const question = document.getElementById('question').value;
         
         try {
+            // Serve this page from an origin listed in CORS_ORIGINS
             const response = await fetch('http://localhost:8000/ask', {
                 method: 'POST',
                 headers: {
@@ -463,9 +409,16 @@ curl -X POST "http://localhost:8000/ask" \
             });
             
             const data = await response.json();
-            document.getElementById('answer').innerHTML = 
-                `<h3>Answer:</h3><p>${data.answer}</p>
-                 <h4>Sources:</h4><ul>${data.sources.map(s => `<li>${s}</li>`).join('')}</ul>`;
+            // Use textContent: answers and filenames must never be rendered as HTML
+            const answerDiv = document.getElementById('answer');
+            answerDiv.textContent = data.answer;
+            const list = document.createElement('ul');
+            (data.sources || []).forEach(s => {
+                const li = document.createElement('li');
+                li.textContent = s.metadata.filename;
+                list.appendChild(li);
+            });
+            answerDiv.appendChild(list);
         } catch (error) {
             console.error('Error:', error);
         }
@@ -478,10 +431,10 @@ curl -X POST "http://localhost:8000/ask" \
 ### Python Integration
 
 ```python
-from policy_agent import policy_bot
+from policy_agent import get_policy_bot
 
 # Ask a question
-response = policy_bot.ask_question(
+response = get_policy_bot().ask_question(
     "What is the company policy on remote work?",
     user_id="employee123"
 )
@@ -497,43 +450,48 @@ Policy Bot
 ├── document_processor.py    # Document loading and chunking
 ├── api_server.py           # FastAPI REST API
 ├── web_interface.py        # Web UI
-├── setup_knowledge_base.py # Setup script
-├── test_policy_bot.py      # Test suite
+├── setup_knowledge_base.py # Builds the knowledge base and runs a test question
+├── update_knowledge_base.py# Rebuilds the vector database (no API key needed)
+├── tests/                  # Offline pytest suite
+├── test_*.py               # Manual end-to-end check scripts
 ├── config.py               # Configuration settings
 └── knowledge_base/
     ├── documents/          # Your policy documents
-    ├── vector_db/          # Vector database (auto-created)
-    └── output/             # Generated reports
+    └── vector_db/          # Vector database (auto-created)
 ```
 
 ## ⚙️ Configuration
 
-Edit `config.py` or set environment variables:
+Set environment variables in `.env` (see `env_template.txt` for the full list):
 
-```python
-# LLM Configuration
-LLM_API_KEY = "your_google_api_key"
-LLM_MODEL_NAME = "gemini-1.5-flash"
+```bash
+GOOGLE_API_KEY=your_google_api_key
+LLM_MODEL_NAME=gemini-2.5-flash
 
-# Document Processing
-CHUNK_SIZE = 1000
-CHUNK_OVERLAP = 200
-MAX_CHUNKS_RETRIEVED = 5
+CHUNK_SIZE=1000
+CHUNK_OVERLAP=200
+MAX_CHUNKS_RETRIEVED=5
 
-# API Configuration
-API_HOST = "0.0.0.0"
-API_PORT = 8000
+API_HOST=127.0.0.1      # use 0.0.0.0 to expose on the network
+API_PORT=8000           # api_server.py
+WEB_PORT=8001           # web_interface.py
+CORS_ORIGINS=http://localhost:8001
+POLICY_BOT_API_KEY=     # optional shared secret
 ```
+
+Relative paths (`VECTOR_DB_PATH`, `KNOWLEDGE_BASE_DIR`) are resolved against the `policy_bot` folder,
+so the scripts work from any working directory.
 
 ## 🔧 Development
 
 ### Adding New Documents
 
 1. Copy new policy documents to `knowledge_base/documents/`
-2. Run the setup script again:
+2. Run the setup script again (it replaces the index, so edited or removed documents are reflected):
    ```bash
    python setup_knowledge_base.py
    ```
+3. Restart the API server so it picks up the rebuilt index
 
 ### Customizing the Bot
 
@@ -544,7 +502,10 @@ API_PORT = 8000
 ### Testing
 
 ```bash
-# Run all tests
+# Offline automated tests
+pytest
+
+# End-to-end checks (need GOOGLE_API_KEY; test_policy_bot.py also expects a running api_server.py)
 python test_policy_bot.py
 
 # Test specific components
@@ -557,7 +518,7 @@ python -c "from policy_agent import policy_bot; print(policy_bot.health_check())
 
 1. **Create Dockerfile:**
    ```dockerfile
-   FROM python:3.9-slim
+   FROM python:3.11-slim
    
    WORKDIR /app
    COPY requirements.txt .
@@ -565,6 +526,7 @@ python -c "from policy_agent import policy_bot; print(policy_bot.health_check())
    
    COPY . .
    EXPOSE 8000
+   ENV API_HOST=0.0.0.0
    
    CMD ["python", "api_server.py"]
    ```
@@ -588,21 +550,18 @@ The Policy Bot is ready for deployment on:
 ### Health Checks
 
 ```bash
-curl "http://localhost:8000/api/health"
+curl "http://localhost:8000/health"
 ```
 
 ### Statistics
 
 ```bash
-curl "http://localhost:8000/api/stats"
+curl "http://localhost:8000/stats"
 ```
 
 ### Logs
 
-Check the logs for debugging:
-```bash
-tail -f logs/policy_bot.log
-```
+Logs are written to stdout; set `LOG_LEVEL` in `.env` to control verbosity.
 
 ## 🤝 Integration
 
@@ -610,12 +569,13 @@ tail -f logs/policy_bot.log
 
 ```python
 from slack_bolt import App
+from policy_agent import get_policy_bot
 
 app = App(token="your_slack_token")
 
 @app.message("policy")
 def handle_policy_question(message, say):
-    response = policy_bot.ask_question(message['text'])
+    response = get_policy_bot().ask_question(message['text'])
     say(response['answer'])
 ```
 

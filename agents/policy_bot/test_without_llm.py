@@ -5,12 +5,17 @@ Test script that works without LLM API key - tests document processing and vecto
 import os
 import sys
 import logging
+import tempfile
 
 # Add current directory to path for imports
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from document_processor import document_processor
-from config import KNOWLEDGE_BASE_DIR, VECTOR_DB_PATH
+from config import KNOWLEDGE_BASE_DIR
+from policy_agent import build_embeddings
+
+# Build into a scratch directory so this script never touches the real knowledge base
+TEST_DB_PATH = tempfile.mkdtemp(prefix="policy_bot_test_db_")
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -22,15 +27,11 @@ def test_vector_store_creation():
     print("🧪 Testing Vector Store Creation (without LLM)...")
     
     try:
-        from langchain_huggingface import HuggingFaceEmbeddings
         from langchain_chroma import Chroma
         
         # Initialize embeddings (this will download the model)
         print("📥 Downloading embedding model...")
-        embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2",
-            model_kwargs={'device': 'cpu'}
-        )
+        embeddings = build_embeddings()
         print("✅ Embedding model loaded successfully")
         
         # Load and process documents
@@ -49,11 +50,11 @@ def test_vector_store_creation():
         vectorstore = Chroma.from_documents(
             documents=chunked_docs,
             embedding=embeddings,
-            persist_directory=VECTOR_DB_PATH
+            persist_directory=TEST_DB_PATH
         )
         
         # Vector store is automatically persisted
-        print(f"✅ Vector store created and saved to {VECTOR_DB_PATH}")
+        print(f"✅ Vector store created and saved to {TEST_DB_PATH}")
         
         # Test retrieval
         print("🔍 Testing document retrieval...")
@@ -89,17 +90,13 @@ def test_document_search():
     print("\n🧪 Testing Document Search...")
     
     try:
-        from langchain_huggingface import HuggingFaceEmbeddings
         from langchain_chroma import Chroma
         
-        # Load existing vector store
-        embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2",
-            model_kwargs={'device': 'cpu'}
-        )
+        # Load the vector store built by test_vector_store_creation
+        embeddings = build_embeddings()
         
         vectorstore = Chroma(
-            persist_directory=VECTOR_DB_PATH,
+            persist_directory=TEST_DB_PATH,
             embedding_function=embeddings
         )
         

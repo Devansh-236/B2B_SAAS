@@ -128,7 +128,10 @@ def test_api_endpoints():
     try:
         import requests
         
-        base_url = "http://localhost:8000"
+        from config import API_PORT, API_KEY
+
+        base_url = f"http://localhost:{API_PORT}"
+        headers = {"X-API-Key": API_KEY} if API_KEY else {}
         
         # Test health endpoint
         response = requests.get(f"{base_url}/health")
@@ -139,7 +142,7 @@ def test_api_endpoints():
             return False
         
         # Test stats endpoint
-        response = requests.get(f"{base_url}/stats")
+        response = requests.get(f"{base_url}/stats", headers=headers)
         if response.status_code == 200:
             print("✅ Stats endpoint working")
         else:
@@ -152,7 +155,7 @@ def test_api_endpoints():
             "user_id": "test_user"
         }
         
-        response = requests.post(f"{base_url}/ask", json=test_data)
+        response = requests.post(f"{base_url}/ask", json=test_data, headers=headers)
         if response.status_code == 200:
             print("✅ Ask endpoint working")
         else:

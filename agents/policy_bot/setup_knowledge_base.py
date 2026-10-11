@@ -38,17 +38,15 @@ def setup_knowledge_base():
         print(f"📁 Creating directory: {docs_dir}")
         docs_dir.mkdir(parents=True, exist_ok=True)
         print(f"✅ Please add your policy documents to: {docs_dir}")
-        print("   Supported formats: PDF, DOCX, DOC, TXT")
+        print("   Supported formats: PDF, DOCX, TXT")
         return False
     
     # Check if there are any documents
-    supported_files = []
-    for ext in ['.pdf', '.docx', '.doc', '.txt']:
-        supported_files.extend(list(docs_dir.glob(f"*{ext}")))
+    supported_files = document_processor.find_supported_files(docs_dir)
     
     if not supported_files:
         print(f"❌ No supported documents found in: {docs_dir}")
-        print("   Supported formats: PDF, DOCX, DOC, TXT")
+        print("   Supported formats: PDF, DOCX, TXT")
         return False
     
     print(f"📚 Found {len(supported_files)} documents to process:")
@@ -80,9 +78,9 @@ def setup_knowledge_base():
             for warning in validation['warnings']:
                 print(f"   - {warning}")
         
-        # Add documents to vector store
+        # Replace the vector store contents so removed or edited documents don't linger
         print("\n🔄 Creating vector database...")
-        policy_bot.add_documents(documents)
+        policy_bot.replace_documents(documents)
         
         # Test the setup
         print("\n🧪 Testing the setup...")
@@ -90,7 +88,7 @@ def setup_knowledge_base():
         
         if test_response['status'] == 'success':
             print("✅ Knowledge base setup completed successfully!")
-            print(f"📊 Vector database created with {policy_bot.get_knowledge_base_stats()['total_documents']} documents")
+            print(f"📊 Vector database created with {policy_bot.get_knowledge_base_stats()['total_documents']} chunks")
             return True
         else:
             print("❌ Test failed. Please check your configuration.")
@@ -112,7 +110,7 @@ def main():
         print("❌ Please configure your Google API key first!")
         print("1. Copy env_template.txt to .env")
         print("2. Add your Google API key to the .env file")
-        print("3. Get your API key from: https://makersuite.google.com/app/apikey")
+        print("3. Get your API key from: https://aistudio.google.com/app/apikey")
         return
     
     success = setup_knowledge_base()

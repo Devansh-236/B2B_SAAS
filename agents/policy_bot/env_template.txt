@@ -1,13 +1,15 @@
 # Copy this file to .env and fill in your actual values
 
-# Google Gemini API Key (get from https://makersuite.google.com/app/apikey)
+# Google Gemini API Key (get from https://aistudio.google.com/app/apikey)
 GOOGLE_API_KEY=your_google_api_key_here
 
 # LLM Model Configuration
-LLM_MODEL_NAME=gemini-1.5-flash
+LLM_MODEL_NAME=gemini-2.5-flash
+# Upper bound on generated tokens (on thinking models this includes reasoning tokens)
+MAX_ANSWER_TOKENS=4096
 
-# Vector Database Configuration
-VECTOR_DB_PATH=./knowledge_base/vector_db
+# Vector Database Configuration (relative paths are resolved against this folder)
+VECTOR_DB_PATH=knowledge_base/vector_db
 EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 
 # Document Processing
@@ -15,18 +17,24 @@ CHUNK_SIZE=1000
 CHUNK_OVERLAP=200
 MAX_CHUNKS_RETRIEVED=5
 
-# API Configuration
-API_HOST=0.0.0.0
+# Server Configuration
+# Use 0.0.0.0 only when the bot must be reachable from other machines.
+API_HOST=127.0.0.1
 API_PORT=8000
+WEB_PORT=8001
+# Comma-separated list of browser origins allowed to call the API directly
+CORS_ORIGINS=http://localhost:8001,http://127.0.0.1:8001
+# Optional: when set, /ask, /stats and /docs/info require the header X-API-Key: <value>
+POLICY_BOT_API_KEY=
+MAX_QUESTION_LENGTH=1000
+# Set to true for auto-reload during development
+RELOAD=false
 
 # File Paths
-KNOWLEDGE_BASE_DIR=./knowledge_base/documents
-OUTPUT_DIR=./knowledge_base/output
+KNOWLEDGE_BASE_DIR=knowledge_base/documents
 
 # Logging
 LOG_LEVEL=INFO
-LOG_FILE=./logs/policy_bot.log
 
 # Company Information
 COMPANY_NAME=Your Company Name
-MAX_ANSWER_LENGTH=2000

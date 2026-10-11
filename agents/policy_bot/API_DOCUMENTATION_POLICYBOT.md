@@ -28,12 +28,16 @@ The Policy Bot API is a RESTful service built with FastAPI that provides intelli
 
 ## Authentication
 
-**Current Version**: No authentication required  
-**Production Recommendation**: Implement JWT tokens or API keys
+**Default**: No authentication; the server listens on `127.0.0.1` only.
+**Optional API key**: set `POLICY_BOT_API_KEY` to require an `X-API-Key` header on `/ask`, `/stats` and `/docs/info`.
+`/` and `/health` remain open for monitoring.
 
 ```bash
-# No authentication headers required in current version
 curl "http://localhost:8000/health"
+curl -X POST "http://localhost:8000/ask" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $POLICY_BOT_API_KEY" \
+  -d '{"question": "What is the vacation policy?"}'
 ```
 
 ## Base URL & Configuration
@@ -44,9 +48,12 @@ curl "http://localhost:8000/health"
 ### Environment Variables
 
 ```bash
-API_HOST=0.0.0.0          # Server host
+API_HOST=127.0.0.1        # Server host (0.0.0.0 to expose on the network)
 API_PORT=8000             # Server port
 GOOGLE_API_KEY=your_key   # Required for LLM functionality
+CORS_ORIGINS=http://localhost:8001   # Comma-separated allowed browser origins
+POLICY_BOT_API_KEY=       # Optional shared secret for X-API-Key
+MAX_QUESTION_LENGTH=1000  # Longer questions are rejected with 422
 ```
 
 ## API Endpoints
@@ -93,9 +100,10 @@ curl -X GET "http://localhost:8000/" \
   "timestamp": "string",        // ISO format timestamp
   "user_id": "string|null",     // User ID if provided
   "question": "string|null",    // Original question
-  "sources": ["string"],        // List of source documents
-  "num_sources": "integer",     // Number of sources used
-  "error": "string|null"        // Error message if any
+  "sources": [                  // Retrieved policy excerpts
+    {"content": "string", "metadata": {"filename": "string"}}
+  ],
+  "num_sources": "integer"      // Number of sources used
 }
 ```
 
@@ -129,11 +137,10 @@ curl -X POST "http://localhost:8000/ask" \
   "user_id": "emp_12345",
   "question": "What is the company vacation policy?",
   "sources": [
-    "employee_handbook.pdf",
-    "vacation_policy.txt"
+    {"content": "Full-time employees receive 20 vacation days per year...", "metadata": {"filename": "employee_handbook.pdf"}},
+    {"content": "Vacation requests must be submitted two weeks in advance...", "metadata": {"filename": "vacation_policy.txt"}}
   ],
-  "num_sources": 2,
-  "error": null
+  "num_sources": 2
 }
 ```
 
@@ -146,7 +153,7 @@ curl -X POST "http://localhost:8000/ask" \
 #### Response
 ```json
 {
-  "status": "string",              // Overall status: "healthy" or "unhealthy"
+  "status": "string",              // "healthy", "degraded" (no documents indexed) or "unhealthy"
   "knowledge_base": {
     "total_documents": "integer",  // Number of documents in knowledge base
     "status": "string"             // Knowledge base status
@@ -170,7 +177,7 @@ curl -X GET "http://localhost:8000/health" \
   "status": "healthy",
   "knowledge_base": {
     "total_documents": 8,
-    "status": "ready"
+    "status": "active"
   },
   "llm_available": true,
   "vectorstore_available": true,
@@ -188,10 +195,8 @@ curl -X GET "http://localhost:8000/health" \
 #### Response
 ```json
 {
-  "total_documents": "integer",    // Total number of processed documents
-  "status": "string",              // Knowledge base status
-  "vector_db_path": "string|null", // Path to vector database
-  "error": "string|null"           // Error message if any
+  "total_documents": "integer",    // Number of indexed chunks
+  "status": "string"               // active | no_vectorstore | error
 }
 ```
 
@@ -205,9 +210,7 @@ curl -X GET "http://localhost:8000/stats" \
 ```json
 {
   "total_documents": 8,
-  "status": "ready",
-  "vector_db_path": "./knowledge_base/vector_db",
-  "error": null
+  "status": "active"
 }
 ```
 
@@ -220,9 +223,8 @@ curl -X GET "http://localhost:8000/stats" \
 #### Response
 ```json
 {
-  "total_documents": "integer",    // Number of documents
-  "status": "string",              // Document status
-  "vector_db_path": "string"       // Vector database path
+  "total_documents": "integer",    // Number of indexed chunks
+  "status": "string"               // Knowledge base status
 }
 ```
 
@@ -263,8 +265,7 @@ Open in browser: `http://localhost:8000/docs`
   "user_id": str|None,
   "question": str|None,
   "sources": list|None,
-  "num_sources": int|None,
-  "error": str|None
+  "num_sources": int|None
 }
 ```
 
@@ -284,7 +285,7 @@ Open in browser: `http://localhost:8000/docs`
 
 ### HTTP Status Codes
 - `200 OK` - Successful request
-- `400 Bad Request` - Invalid request data
+- `401 Unauthorized` - Missing or wrong `X-API-Key` (only when `POLICY_BOT_API_KEY` is set)
 - `404 Not Found` - Endpoint not found
 - `422 Unprocessable Entity` - Validation error
 - `500 Internal Server Error` - Server error
@@ -292,8 +293,7 @@ Open in browser: `http://localhost:8000/docs`
 ### Error Response Format
 ```json
 {
-  "detail": "string",     // Error description
-  "status_code": "integer" // HTTP status code
+  "detail": "string"      // Error description (a list of field errors for 422)
 }
 ```
 
@@ -328,9 +328,10 @@ Open in browser: `http://localhost:8000/docs`
 **Server Error:**
 ```json
 {
-  "detail": "Internal server error: Unable to process document embeddings"
+  "detail": "Internal server error"
 }
 ```
+Internal details are logged on the server, not returned to clients.
 
 ## Rate Limiting
 
@@ -498,9 +499,15 @@ type QuestionResponse struct {
     Timestamp  string   `json:"timestamp"`
     UserID     *string  `json:"user_id"`
     Question   *string  `json:"question"`
-    Sources    []string `json:"sources"`
+    Sources    []Source `json:"sources"`
     NumSources *int     `json:"num_sources"`
-    Error      *string  `json:"error"`
+}
+
+type Source struct {
+    Content  string `json:"content"`
+    Metadata struct {
+        Filename string `json:"filename"`
+    } `json:"metadata"`
 }
 
 func NewPolicyBotClient(baseURL string) *PolicyBotClient {

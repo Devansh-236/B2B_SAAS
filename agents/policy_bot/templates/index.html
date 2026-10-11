@@ -228,6 +228,7 @@
                     class="input-field" 
                     id="questionInput" 
                     placeholder="Ask me about company policies..."
+                    maxlength="1000"
                     onkeypress="handleKeyPress(event)"
                 >
                 <button class="send-button" id="sendButton" onclick="sendQuestion()">
@@ -239,6 +240,15 @@
 
     <script>
         const API_BASE = '/api';
+
+        // Only needed when the server sets POLICY_BOT_API_KEY.
+        function getApiKey() {
+            try { return sessionStorage.getItem('policyBotApiKey') || ''; } catch (e) { return ''; }
+        }
+
+        function setApiKey(key) {
+            try { sessionStorage.setItem('policyBotApiKey', key); } catch (e) { /* storage unavailable */ }
+        }
         
         function handleKeyPress(event) {
             if (event.key === 'Enter') {
@@ -265,19 +275,32 @@
             input.value = '';
             
             try {
+                const headers = { 'Content-Type': 'application/json' };
+                const apiKey = getApiKey();
+                if (apiKey) headers['X-API-Key'] = apiKey;
+
                 const response = await fetch(`${API_BASE}/ask`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: headers,
                     body: JSON.stringify({
                         question: question,
                         user_id: 'web_user'
                     })
                 });
-                
+
+                if (response.status === 401) {
+                    const key = window.prompt('This Policy Bot requires an access key:');
+                    if (key) setApiKey(key.trim());
+                    addMessage('Access key saved. Please send your question again.', 'bot', null, true);
+                    return;
+                }
+                if (response.status === 422) {
+                    addMessage('Your question is too long. Please shorten it and try again.', 'bot', null, true);
+                    return;
+                }
+
                 const data = await response.json();
-                
+
                 if (data.status === 'success') {
                     addMessage(data.answer, 'bot', data.sources);
                 } else {
@@ -330,12 +353,20 @@
             if (sources && sources.length > 0) {
                 const sourcesDiv = document.createElement('div');
                 sourcesDiv.className = 'sources';
-                sourcesDiv.innerHTML = `
-                    <div class="sources-title">📚 Sources:</div>
-                    ${sources.map(source => 
-                        `<div class="source-item">• ${source.metadata?.filename || 'Unknown source'}</div>`
-                    ).join('')}
-                `;
+
+                const title = document.createElement('div');
+                title.className = 'sources-title';
+                title.textContent = '📚 Sources:';
+                sourcesDiv.appendChild(title);
+
+                // Filenames come from the server; render them as text, never as HTML.
+                const filenames = [...new Set(sources.map(s => s.metadata?.filename || 'Unknown source'))];
+                filenames.forEach(name => {
+                    const item = document.createElement('div');
+                    item.className = 'source-item';
+                    item.textContent = `• ${name}`;
+                    sourcesDiv.appendChild(item);
+                });
                 messageDiv.appendChild(sourcesDiv);
             }
             

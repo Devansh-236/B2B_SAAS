@@ -41,14 +41,12 @@ def update_knowledge_base(verbose=True):
         return False
     
     # List all documents
-    supported_files = []
-    for ext in ['.pdf', '.docx', '.doc', '.txt']:
-        supported_files.extend(list(docs_dir.glob(f"*{ext}")))
+    supported_files = document_processor.find_supported_files(docs_dir)
     
     if not supported_files:
         if verbose:
             print(f"❌ No supported documents found in: {docs_dir}")
-            print("   Supported formats: PDF, DOCX, DOC, TXT")
+            print("   Supported formats: PDF, DOCX, TXT")
         return False
     
     if verbose:
@@ -85,32 +83,20 @@ def update_knowledge_base(verbose=True):
             for warning in validation['warnings']:
                 print(f"   - {warning}")
         
-        # Create new vector store (this will overwrite the old one)
+        # Rebuild the vector store in place (same embedding model the bot queries with)
         if verbose:
-            print("\n🗄️ Creating new vector database...")
-        from langchain_huggingface import HuggingFaceEmbeddings
+            print("\n🗄️ Rebuilding vector database...")
         from langchain_chroma import Chroma
-        
-        # Initialize embeddings
-        embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2",
-            model_kwargs={'device': 'cpu'}
+        from policy_agent import build_embeddings, chunk_id
+
+        vectorstore = Chroma(
+            persist_directory=VECTOR_DB_PATH,
+            embedding_function=build_embeddings()
         )
-        
-        # Remove old vector database if it exists
-        if os.path.exists(VECTOR_DB_PATH):
-            import shutil
-            shutil.rmtree(VECTOR_DB_PATH)
-            if verbose:
-                print(f"🗑️  Removed old vector database")
-        
-        # Create new vector store
-        vectorstore = Chroma.from_documents(
-            documents=documents,
-            embedding=embeddings,
-            persist_directory=VECTOR_DB_PATH
-        )
-        
+        vectorstore.reset_collection()
+        unique = {chunk_id(doc): doc for doc in documents}
+        vectorstore.add_documents(list(unique.values()), ids=list(unique.keys()))
+
         if verbose:
             print(f"✅ New vector database created at {VECTOR_DB_PATH}")
         
@@ -161,8 +147,7 @@ def main():
         print("\n🎉 Knowledge base update completed successfully!")
         print("📝 Next steps:")
         print("1. Configure your Google API key in .env file")
-        print("2. Run: python test_full_rag.py")
-        print("3. Start the API server: python api_server.py")
+        print("2. Restart the API server so it picks up the new index: python api_server.py")
     else:
         print("\n❌ Knowledge base update failed. Please check the errors above.")
 

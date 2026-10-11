@@ -10,13 +10,12 @@ import logging
 from typing import List, Dict, Any
 from pathlib import Path
 
-from langchain.schema import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import (
     PyPDFLoader,
     Docx2txtLoader,
-    TextLoader,
-    DirectoryLoader
+    TextLoader
 )
 
 from config import (
@@ -44,13 +43,19 @@ class DocumentProcessor:
             separators=["\n\n", "\n", " ", ""]
         )
         
-        # Supported file extensions
+        # Supported file extensions (legacy binary .doc is not supported by docx2txt)
         self.supported_extensions = {
             '.pdf': PyPDFLoader,
             '.docx': Docx2txtLoader,
-            '.doc': Docx2txtLoader,
-            '.txt': TextLoader
+            '.txt': lambda path: TextLoader(path, encoding='utf-8', autodetect_encoding=True)
         }
+
+    def find_supported_files(self, directory_path: Path) -> List[Path]:
+        """Return supported files under ``directory_path`` (recursive, case-insensitive extensions)."""
+        return sorted(
+            path for path in Path(directory_path).rglob("*")
+            if path.is_file() and path.suffix.lower() in self.supported_extensions
+        )
     
     def load_documents_from_directory(self, directory_path: str = None) -> List[Document]:
         """
@@ -73,38 +78,9 @@ class DocumentProcessor:
         
         documents = []
         
-        # Load documents by extension
-        for ext, loader_class in self.supported_extensions.items():
-            try:
-                # Find all files with this extension
-                files = list(directory_path.glob(f"*{ext}"))
-                
-                for file_path in files:
-                    try:
-                        logger.info(f"Loading document: {file_path}")
-                        loader = loader_class(str(file_path))
-                        docs = loader.load()
-                        
-                        # Add metadata
-                        for doc in docs:
-                            doc.metadata.update({
-                                'source': str(file_path),
-                                'filename': file_path.name,
-                                'file_type': ext[1:],  # Remove the dot
-                                'file_size': file_path.stat().st_size
-                            })
-                        
-                        documents.extend(docs)
-                        logger.info(f"Successfully loaded {len(docs)} pages from {file_path}")
-                        
-                    except Exception as e:
-                        logger.error(f"Error loading {file_path}: {e}")
-                        continue
-                        
-            except Exception as e:
-                logger.error(f"Error processing {ext} files: {e}")
-                continue
-        
+        for file_path in self.find_supported_files(directory_path):
+            documents.extend(self.load_single_document(file_path))
+
         logger.info(f"Total documents loaded: {len(documents)}")
         return documents
     
